@@ -21,6 +21,7 @@ export class StateInline {
   public backticks: Record<number, number>
   public backticksScanned: boolean
   public linkLevel: number
+  public Token: typeof Token
 
   constructor(src: string, md: any, env: any, outTokens: Token[]) {
     this.src = src
@@ -40,6 +41,7 @@ export class StateInline {
     this.backticks = {}
     this.backticksScanned = false
     this.linkLevel = 0
+    this.Token = Token
   }
 
   /**

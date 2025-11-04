@@ -18,6 +18,7 @@ export class StateBlock {
   public md: any
   public env: any
   public tokens: Token[]
+  public Token: typeof Token
 
   // Line markers
   public bMarks: number[] = [] // line begin offsets
@@ -41,6 +42,7 @@ export class StateBlock {
     this.md = md
     this.env = env
     this.tokens = tokens
+    this.Token = Token
 
     // Generate line markers
     const s = this.src

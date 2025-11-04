@@ -1,4 +1,5 @@
 import type { RendererOptions } from './render/renderer'
+import type { Token as TokenType } from './common/token'
 import LinkifyIt from 'linkify-it'
 import * as utils from './common/utils'
 import * as helpers from './helpers'
@@ -35,12 +36,35 @@ const config: Record<string, Preset> = {
   commonmark: commonmarkPreset as Preset,
 }
 
-export type MarkdownItCore = ReturnType<typeof markdownit>
-export type MarkdownItPluginFn = (md: MarkdownItCore, ...params: unknown[]) => unknown
+// Define the MarkdownIt instance interface for better type support
+export interface MarkdownIt {
+  core: ParserCore
+  block: any
+  inline: any
+  linkify: ReturnType<typeof LinkifyIt>
+  renderer: Renderer
+  options: MarkdownItOptions
+  set(options: MarkdownItOptions): this
+  configure(presets: string | Preset): this
+  enable(list: string | string[], ignoreInvalid?: boolean): this
+  disable(list: string | string[], ignoreInvalid?: boolean): this
+  use(plugin: MarkdownItPlugin, ...params: unknown[]): this
+  render(src: string, env?: Record<string, unknown>): string
+  renderInline(src: string, env?: Record<string, unknown>): string
+  validateLink: typeof validateLink
+  normalizeLink: typeof normalizeLink
+  normalizeLinkText: typeof normalizeLinkText
+  utils: typeof utils
+  helpers: typeof helpers
+  parse(src: string, env?: Record<string, unknown>): TokenType[]
+  parseInline(src: string, env?: Record<string, unknown>): TokenType[]
+}
+
+export type MarkdownItPluginFn = (md: MarkdownIt, ...params: unknown[]) => unknown
 export interface MarkdownItPluginModule { default: MarkdownItPluginFn }
 export type MarkdownItPlugin = MarkdownItPluginFn | MarkdownItPluginModule
 
-export default function markdownit(presetName?: string | MarkdownItOptions, options?: MarkdownItOptions) {
+function MarkdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownItOptions): MarkdownIt {
   // defaults (core-only)
   let opts: MarkdownItOptions = {
     html: false,
@@ -161,7 +185,7 @@ export default function markdownit(presetName?: string | MarkdownItOptions, opti
       }
       return this
     },
-    use(this: MarkdownItCore, plugin: MarkdownItPlugin, ...params: unknown[]) {
+    use(this: MarkdownIt, plugin: MarkdownItPlugin, ...params: unknown[]) {
       const fn: MarkdownItPluginFn | undefined
         = typeof plugin === 'function'
           ? plugin
@@ -177,11 +201,11 @@ export default function markdownit(presetName?: string | MarkdownItOptions, opti
       fn.apply(thisArg as unknown, args)
       return this
     },
-    render(this: MarkdownItCore, src: string, env: Record<string, unknown> = {}) {
+    render(this: MarkdownIt, src: string, env: Record<string, unknown> = {}) {
       const tokens = this.parse(src, env)
       return this.renderer.render(tokens, this.options, env)
     },
-    renderInline(this: MarkdownItCore, src: string, env: Record<string, unknown> = {}) {
+    renderInline(this: MarkdownIt, src: string, env: Record<string, unknown> = {}) {
       const tokens = this.parseInline(src, env)
       return this.renderer.render(tokens, this.options, env)
     },
@@ -227,5 +251,10 @@ export default function markdownit(presetName?: string | MarkdownItOptions, opti
       md.inline.ruler2.enableOnly(c.inline2.rules)
   }
 
-  return md
+  return md as MarkdownIt
 }
+
+export type MarkdownItCore = ReturnType<typeof MarkdownIt>
+
+// Export the default function
+export default MarkdownIt
