@@ -11,26 +11,15 @@ export interface MarkdownItOptions {
   highlight?: (str: string, lang: string) => string;
 }
 
-export interface Token {
-  type: string;
-  tag?: string;
-  attrs?: [string, string][];
-  map?: number[];
-  nesting?: number;
-  level: number;
-  children?: Token[];
-  content: string;
-  markup?: string;
-  info?: string;
-  hidden?: boolean;
-}
+// Token is now a class exported from src/common/token.ts
+// This re-export maintains compatibility
+export { Token } from '../common/token'
 
 export interface State {
   src: string;
   env: Record<string, unknown>;
   tokens: Token[];
-  inlineMode?: boolean;
-}
+  }
 
 export interface Rule {
   name: string;

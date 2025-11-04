@@ -2,7 +2,7 @@
  * StateBlock - Parser state class for block-level parsing
  */
 
-import type { Token } from '../../types'
+import { Token } from '../../common/token'
 
 function isSpace(code: number): boolean {
   switch (code) {
@@ -95,14 +95,10 @@ export class StateBlock {
   }
 
   push(type: string, tag: string, nesting: number): Token {
-    const token: Token = {
-      type,
-      tag,
-      level: this.level,
-      content: '',
-      block: true,
-      nesting,
-    } as Token
+    const token = new Token(type, tag, nesting)
+    token.level = this.level
+    token.content = ''
+    token.block = true
 
     if (nesting < 0)
       this.level--

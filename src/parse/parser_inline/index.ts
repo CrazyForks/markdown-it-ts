@@ -1,7 +1,6 @@
 import type { Token } from '../../types'
 import autolink from '../../rules/inline/autolink'
 import backticks from '../../rules/inline/backticks'
-
 import balance_pairs from '../../rules/inline/balance_pairs'
 import { emphasis } from '../../rules/inline/emphasis'
 import entity from '../../rules/inline/entity'
@@ -10,8 +9,9 @@ import fragments_join from '../../rules/inline/fragments_join'
 import html_inline from '../../rules/inline/html_inline'
 import image from '../../rules/inline/image'
 import link from '../../rules/inline/link'
+import linkify from '../../rules/inline/linkify'
 import newline from '../../rules/inline/newline'
-// Import inline rules
+import { strikethrough } from '../../rules/inline/strikethrough'
 import text from '../../rules/inline/text'
 import { InlineRuler } from './ruler'
 import { StateInline } from './state_inline'
@@ -28,13 +28,13 @@ export class ParserInline {
     this.ruler2 = new InlineRuler()
 
     // Register default inline rules (ruler)
-    // Order matches original markdown-it
+    // Order MUST match original markdown-it exactly!
     this.ruler.push('text', text)
-    // this.ruler.push('linkify', linkify) // TODO: requires linkify-it library
+    this.ruler.push('linkify', linkify)
     this.ruler.push('newline', newline)
     this.ruler.push('escape', escape)
     this.ruler.push('backticks', backticks)
-    // this.ruler.push('strikethrough', strikethrough.tokenize) // TODO: optional feature
+    this.ruler.push('strikethrough', strikethrough.tokenize)
     this.ruler.push('emphasis', emphasis.tokenize)
     this.ruler.push('link', link)
     this.ruler.push('image', image)
@@ -44,6 +44,7 @@ export class ParserInline {
 
     // Register post-process rules (ruler2)
     this.ruler2.push('balance_pairs', balance_pairs)
+    this.ruler2.push('strikethrough', strikethrough.postProcess)
     this.ruler2.push('emphasis', emphasis.postProcess)
     this.ruler2.push('fragments_join', fragments_join)
   }
@@ -67,13 +68,32 @@ export class ParserInline {
 
     if (state.level < maxNesting) {
       for (let i = 0; i < len; i++) {
+        // Increment state.level and decrement it later to limit recursion.
+        // It's harmless to do here, because no tokens are created. But ideally,
+        // we'd need a separate private state variable for this purpose.
+        state.level++
         ok = rules[i](state, true)
-        if (ok)
+        state.level--
+
+        if (ok) {
+          if (pos >= state.pos) {
+            throw new Error('inline rule didn\'t increment state.pos')
+          }
           break
+        }
       }
     }
     else {
-      // Too much nesting, just skip until the end of the paragraph
+      // Too much nesting, just skip until the end of the paragraph.
+      //
+      // NOTE: this will cause links to behave incorrectly in the following case,
+      //       when an amount of `[` is exactly equal to `maxNesting + 1`:
+      //
+      //       [[[[[[[[[[[[[[[[[[[[[foo]()
+      //
+      // TODO: remove this workaround when CM standard will allow nested links
+      //       (we can replace it by preventing links from being parsed in
+      //       validation mode)
       state.pos = posMax
     }
 

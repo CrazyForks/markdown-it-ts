@@ -14,13 +14,13 @@ The wrapper rules appear relatively early in the [core pipeline](https://github.
 
 ```javascript
 const _rules = [
-  ['normalize',      r_normalize],
-  ['block',          r_block],
-  ['inline',         r_inline],
-  ['linkify',        r_linkify],
-  ['replacements',   r_replacements],
-  ['smartquotes',    r_smartquotes],
-  ['text_join',      r_text_join]
+  ['normalize', r_normalize],
+  ['block', r_block],
+  ['inline', r_inline],
+  ['linkify', r_linkify],
+  ['replacements', r_replacements],
+  ['smartquotes', r_smartquotes],
+  ['text_join', r_text_join]
 ]
 ```
 
@@ -42,11 +42,11 @@ The plugin entry point will look like the following:
 
 ```typescript
 export default function sectionize_plugin(md: MarkdownIt) {
-  md.core.ruler.push("sectionize", sectionize)
+  md.core.ruler.push('sectionize', sectionize)
 }
 
 function sectionize(state: StateCore) {
-  return
+
 }
 ```
 
@@ -71,13 +71,13 @@ we will iterate *backwards* over the existing array so that our index pointer is
 ```typescript
 function sectionize(state: StateCore) {
   const slugs: Record<string, boolean> = {}
-  const toProcess: Array<{ slug: string; anchor: Token; target: Token }> = []
+  const toProcess: Array<{ slug: string, anchor: Token, target: Token }> = []
 
   // Iterate backwards since we're splicing elements into the array
   for (let i = state.tokens.length - 1; i >= 0; i--) {
     const token = state.tokens[i]
 
-    if (token.type === "heading_open" && token.tag === "h2") {
+    if (token.type === 'heading_open' && token.tag === 'h2') {
       const { open, close } = getSectionPair(state)
       state.tokens.splice(i, 0, close, open)
     }
@@ -87,9 +87,9 @@ function sectionize(state: StateCore) {
 }
 
 function getSectionPair(state: StateCore) {
-  const open = new state.Token("section_open", "section", 1)
+  const open = new state.Token('section_open', 'section', 1)
   open.block = true
-  const close = new state.Token("section_close", "section", -1)
+  const close = new state.Token('section_close', 'section', -1)
   close.block = true
 
   return { open, close }
@@ -110,9 +110,10 @@ Both cases are addressed with just a few lines of code:
 function sectionize(state: StateCore) {
   // ...iteration logic from above
 
-  if (state.tokens[0].type === "section_close") {
+  if (state.tokens[0].type === 'section_close') {
     state.tokens.push(state.tokens.shift()!)
-  } else {
+  }
+  else {
     const { open, close } = getSectionPair(state)
     state.tokens.unshift(open)
     state.tokens.push(close)

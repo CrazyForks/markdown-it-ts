@@ -7,6 +7,7 @@ export default simon(
       'test',
       'benchmark',
       'scripts',
+      'docs',
     ],
   },
   {
@@ -23,7 +24,7 @@ export default simon(
       'antfu/no-import-dist': 'off',
       'vue/require-toggle-inside-transition': 'off',
     },
-    ignores: ['**/fixtures', 'test'],
+    ignores: ['**/fixtures', 'test', 'docs'],
   },
   {},
 )

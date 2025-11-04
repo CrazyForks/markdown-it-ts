@@ -1,4 +1,5 @@
-// Helper functions for parsing links and images
-//
-// This file is intentionally minimal. Helpers are directly imported
-// from their respective files, not through this index file.
+export * from './parse_link_destination'
+export * from './parse_link_label'
+export * from './parse_link_title'
+// Re-export helper functions for plugin compatibility
+export * from './token'

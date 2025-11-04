@@ -19,6 +19,26 @@ export class BlockRuler {
     })
   }
 
+  before(beforeName: string, name: string, fn: any, options?: { alt?: string[] }): void {
+    const i = this._rules.findIndex(r => r.name === beforeName)
+    if (i < 0)
+      throw new Error(`Parser rule not found: ${beforeName}`)
+    const exists = this._rules.findIndex(r => r.name === name)
+    if (exists >= 0)
+      this._rules.splice(exists, 1)
+    this._rules.splice(i, 0, { name, enabled: true, fn, alt: options?.alt || [] })
+  }
+
+  after(afterName: string, name: string, fn: any, options?: { alt?: string[] }): void {
+    const i = this._rules.findIndex(r => r.name === afterName)
+    if (i < 0)
+      throw new Error(`Parser rule not found: ${afterName}`)
+    const exists = this._rules.findIndex(r => r.name === name)
+    if (exists >= 0)
+      this._rules.splice(exists, 1)
+    this._rules.splice(i + 1, 0, { name, enabled: true, fn, alt: options?.alt || [] })
+  }
+
   getRules(chainName: string): Array<(state: any, startLine: number, endLine: number, silent: boolean) => boolean> {
     if (chainName === '') {
       return this._rules.filter(rule => rule.enabled).map(rule => rule.fn)
@@ -80,6 +100,11 @@ export class BlockRuler {
     })
 
     return result
+  }
+
+  enableOnly(names: string[]): void {
+    const allow = new Set(names)
+    for (const r of this._rules) r.enabled = allow.has(r.name)
   }
 }
 

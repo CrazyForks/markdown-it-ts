@@ -1,54 +1,144 @@
 import type { State } from '../../parse/state'
-import LinkifyIt from 'linkify-it'
+import { Token } from '../../common/token'
+import { arrayReplaceAt } from '../../common/utils'
 
-const linkifyIt = LinkifyIt()
-
-function makeLinkOpen(href: string, level = 0) {
-  return { type: 'link_open', tag: 'a', attrs: [['href', href]], level } as any
+function isLinkOpen(str: string): boolean {
+  return /^<a[>\s]/i.test(str)
 }
 
-function makeLinkClose(level = 0) {
-  return { type: 'link_close', tag: 'a', level } as any
+function isLinkClose(str: string): boolean {
+  return /^<\/a\s*>/i.test(str)
 }
 
 export function linkify(state: State): void {
-  const tokens = state.tokens || []
+  const blockTokens = state.tokens
 
-  tokens.forEach((tk) => {
-    if (tk.type === 'inline' && Array.isArray(tk.children)) {
-      const newChildren: any[] = []
-      tk.children.forEach((child: any) => {
-        if (child.type === 'text' && typeof child.content === 'string') {
-          const text = child.content
-          const matches = linkifyIt.match(text)
-          if (!matches) {
-            newChildren.push(child)
-            return
-          }
+  if (!state.md?.options?.linkify) {
+    return
+  }
 
-          let lastIndex = 0
-          matches.forEach((m: any) => {
-            const idx = m.index
-            if (idx > lastIndex) {
-              newChildren.push({ type: 'text', content: text.slice(lastIndex, idx), level: child.level })
-            }
-            const url = m.url
-            newChildren.push(makeLinkOpen(url, child.level))
-            newChildren.push({ type: 'text', content: text.slice(m.index, m.lastIndex), level: child.level + 1 })
-            newChildren.push(makeLinkClose(child.level))
-            lastIndex = m.lastIndex
-          })
-          if (lastIndex < text.length) {
-            newChildren.push({ type: 'text', content: text.slice(lastIndex), level: child.level })
-          }
+  for (let j = 0; j < blockTokens.length; j++) {
+    const blockToken = blockTokens[j]
+
+    if (blockToken.type !== 'inline' || !state.md.linkify.pretest(blockToken.content)) {
+      continue
+    }
+
+    let tokens = blockToken.children || []
+    let htmlLinkLevel = 0
+
+    for (let i = tokens.length - 1; i >= 0; i--) {
+      const currentToken = tokens[i]
+
+      if (currentToken.type === 'link_close') {
+        i--
+        while (i >= 0 && tokens[i].level !== currentToken.level && tokens[i].type !== 'link_open') {
+          i--
+        }
+        continue
+      }
+
+      if (currentToken.type === 'html_inline') {
+        if (isLinkOpen(currentToken.content) && htmlLinkLevel > 0) {
+          htmlLinkLevel--
+        }
+        if (isLinkClose(currentToken.content)) {
+          htmlLinkLevel++
+        }
+      }
+
+      if (htmlLinkLevel > 0) {
+        continue
+      }
+
+      if (currentToken.type !== 'text' || !state.md.linkify.test(currentToken.content)) {
+        continue
+      }
+
+      const text = currentToken.content
+      let links = state.md.linkify.match(text) || []
+
+      if (links.length === 0) {
+        continue
+      }
+
+      const nodes: Token[] = []
+      let level = currentToken.level
+      let lastPos = 0
+
+      if (
+        links.length > 0
+        && links[0].index === 0
+        && i > 0
+        && tokens[i - 1].type === 'text_special'
+      ) {
+        links = links.slice(1)
+      }
+
+      for (let ln = 0; ln < links.length; ln++) {
+        const link = links[ln]
+        const fullUrl = state.md.normalizeLink(link.url)
+
+        if (!state.md.validateLink(fullUrl)) {
+          continue
+        }
+
+        let urlText = link.text
+
+        if (!link.schema) {
+          urlText = state.md.normalizeLinkText(`http://${urlText}`).replace(/^http:\/\//, '')
+        }
+        else if (link.schema === 'mailto:' && !/^mailto:/i.test(urlText)) {
+          urlText = state.md.normalizeLinkText(`mailto:${urlText}`).replace(/^mailto:/, '')
         }
         else {
-          newChildren.push(child)
+          urlText = state.md.normalizeLinkText(urlText)
         }
-      })
-      tk.children = newChildren
+
+        const pos = link.index
+
+        if (pos > lastPos) {
+          const textToken = new Token('text', '', 0)
+          textToken.content = text.slice(lastPos, pos)
+          textToken.level = level
+          nodes.push(textToken)
+        }
+
+        const tokenOpen = new Token('link_open', 'a', 1)
+        tokenOpen.attrs = [['href', fullUrl]]
+        tokenOpen.level = level++
+        tokenOpen.markup = 'linkify'
+        tokenOpen.info = 'auto'
+        nodes.push(tokenOpen)
+
+        const tokenText = new Token('text', '', 0)
+        tokenText.content = urlText
+        tokenText.level = level
+        nodes.push(tokenText)
+
+        const tokenClose = new Token('link_close', 'a', -1)
+        tokenClose.level = --level
+        tokenClose.markup = 'linkify'
+        tokenClose.info = 'auto'
+        nodes.push(tokenClose)
+
+        lastPos = link.lastIndex
+      }
+
+      if (lastPos === 0) {
+        continue
+      }
+
+      if (lastPos < text.length) {
+        const textToken = new Token('text', '', 0)
+        textToken.content = text.slice(lastPos)
+        textToken.level = level
+        nodes.push(textToken)
+      }
+
+      blockToken.children = tokens = arrayReplaceAt(tokens, i, nodes)
     }
-  })
+  }
 }
 
 export default linkify

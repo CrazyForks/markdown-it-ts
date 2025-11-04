@@ -8,23 +8,7 @@ const commonmark = {
     linkify: false,
     typographer: false,
   },
-  components: {
-    core: {
-      rules: [
-        // Add core rules specific to CommonMark here
-      ],
-    },
-    block: {
-      rules: [
-        // Add block rules specific to CommonMark here
-      ],
-    },
-    inline: {
-      rules: [
-        // Add inline rules specific to CommonMark here
-      ],
-    },
-  },
+  // No components: use default rules
 }
 
 export default commonmark

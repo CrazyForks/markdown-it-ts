@@ -34,8 +34,14 @@ export function image(state: any, silent?: boolean): boolean {
     start = pos
     res = parseLinkDestination(state.src, pos, state.posMax)
     if (res.ok) {
-      href = res.str
-      pos = res.pos
+      href = state.md.normalizeLink(res.str)
+      if (state.md.validateLink(href)) {
+        pos = res.pos
+      }
+      else {
+        href = ''
+      }
+
       for (; pos < max; pos++) {
         code = state.src.charCodeAt(pos)
         if (code !== 0x20 && code !== 0x0A)
@@ -89,8 +95,20 @@ export function image(state: any, silent?: boolean): boolean {
   }
   if (!silent) {
     content = state.src.slice(labelStart, labelEnd)
+
+    // Parse alt text content into tokens
+    const tokens: any[] = []
+    state.md.inline.parse(
+      content,
+      state.md,
+      state.env,
+      tokens,
+    )
+
     const token = state.push('image', 'img', 0)
-    token.attrs = [['src', href], ['alt', content]]
+    token.attrs = [['src', href], ['alt', '']]
+    token.children = tokens
+    token.content = content
     if (title)
       token.attrs.push(['title', title])
   }

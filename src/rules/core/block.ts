@@ -1,3 +1,5 @@
+import { Token } from '../../common/token'
+
 /**
  * Core rule: block
  * Runs block-level parser on the input.
@@ -5,14 +7,11 @@
 export function block(state: any): void {
   if (state.inlineMode) {
     // In inline mode, create a single inline token instead of parsing blocks
-    const token = {
-      type: 'inline',
-      tag: '',
-      content: state.src,
-      map: [0, 1],
-      children: [],
-      level: 0,
-    }
+    const token = new Token('inline', '', 0)
+    token.content = state.src
+    token.map = [0, 1]
+    token.children = []
+    token.level = 0
     state.tokens.push(token)
   }
   else {

@@ -5,6 +5,9 @@ import { replacements } from '../../src/rules/core/replacements'
 describe('core replacements', () => {
   it('replaces ellipsis and dashes', () => {
     const state = new State('')
+    state.md = {
+      options: { typographer: true },
+    } as any
     state.tokens = [
       {
         type: 'inline',

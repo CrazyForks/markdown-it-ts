@@ -11,7 +11,7 @@ class Renderer {
     }
   }
 
-  public render(tokens: Token[], options: RendererOptions = {}): string {
+  public render(tokens: Token[], options: RendererOptions = {}, _env: Record<string, unknown> = {}): string {
     this.options = { ...this.options, ...options }
     let output = ''
 

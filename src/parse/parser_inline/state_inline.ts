@@ -1,4 +1,4 @@
-import type { Token } from '../../types'
+import { Token } from '../../common/token'
 
 /**
  * StateInline - state object for inline parser
@@ -46,11 +46,9 @@ export class StateInline {
    * Push pending text as a text token
    */
   public pushPending(): Token {
-    const token: Token = {
-      type: 'text',
-      content: this.pending,
-      level: this.pendingLevel,
-    } as Token
+    const token = new Token('text', '', 0)
+    token.content = this.pending
+    token.level = this.pendingLevel
 
     this.tokens.push(token)
     this.tokens_meta.push(null)
@@ -66,11 +64,8 @@ export class StateInline {
       this.pushPending()
     }
 
-    const token: Token = {
-      type,
-      tag,
-      level: this.level,
-    } as Token
+    const token = new Token(type, tag, nesting)
+    token.level = this.level
 
     let token_meta = null
 

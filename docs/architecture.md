@@ -37,7 +37,6 @@ An `env` object can be used alongside tokens to inject external variables into y
 
 Each chain (`core`, `block`, & `inline`) uses an independent `state` object when parsing data so that each parsing operation is independent and can be disabled on the fly.
 
-
 ## Token stream
 
 Instead of a traditional AST, we use more low-level data representation -- *tokens*.
@@ -70,7 +69,6 @@ More details about tokens:
 - [`Token` source](https://github.com/markdown-it/markdown-it/blob/master/lib/token.mjs)
 - [Live demo](https://markdown-it.github.io/) - type your text and click the `debug` tab.
 
-
 ## Rules
 
 Rules are functions, doing "magic" with parser `state` objects. A rule is associated with one or more *chains* and is unique. For instance, a `blockquote` token is associated with the `blockquote`, `paragraph`, `heading`, and `list` chains.
@@ -89,7 +87,6 @@ can investigate existing rules & plugins to see possible approaches.
 In complex cases you can try to ask for help in the [issue tracker](https://github.com/markdown-it/markdown-it/issues).
 The condition is very simple -- it should be clear from your ticket that you studied the docs, sources,
 and tried to do something yourself. We never reject with help to real developers.
-
 
 ## Renderer
 
@@ -110,42 +107,42 @@ In many cases, that allows easy output changes even without parser intrusion.
 For example, let's convert every image that uses a Vimeo link into a player iframe:
 
 ```js
-var md = require('markdown-it')();
+const md = require('markdown-it')()
 
-var defaultRender = md.renderer.rules.image,
-    vimeoRE       = /^https?:\/\/(www\.)?vimeo.com\/(\d+)($|\/)/;
+const defaultRender = md.renderer.rules.image
+const vimeoRE = /^https?:\/\/(www\.)?vimeo.com\/(\d+)($|\/)/
 
 md.renderer.rules.image = function (tokens, idx, options, env, self) {
-  var src = tokens[idx].attrGet('src');
+  const src = tokens[idx].attrGet('src')
 
   if (vimeoRE.test(src)) {
-    var id = src.match(vimeoRE)[2];
+    const id = src.match(vimeoRE)[2]
 
-    return '<div class="embed-responsive embed-responsive-16by9">\n' +
-           '  <iframe class="embed-responsive-item" src="//player.vimeo.com/video/' + id + '"></iframe>\n' +
-           '</div>\n';
+    return `<div class="embed-responsive embed-responsive-16by9">\n`
+      + `  <iframe class="embed-responsive-item" src="//player.vimeo.com/video/${id}"></iframe>\n`
+      + `</div>\n`
   }
 
   // Pass the token to the default renderer.
-  return defaultRender(tokens, idx, options, env, self);
-};
+  return defaultRender(tokens, idx, options, env, self)
+}
 ```
 
 Here is another example on how to add `target="_blank"` to all links:
 
 ```js
 // Remember the old renderer if overridden, or proxy to the default renderer.
-var defaultRender = md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
-  return self.renderToken(tokens, idx, options);
-};
+const defaultRender = md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
+  return self.renderToken(tokens, idx, options)
+}
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
   // Add a new `target` attribute, or replace the value of the existing one.
-  tokens[idx].attrSet('target', '_blank');
+  tokens[idx].attrSet('target', '_blank')
 
   // Pass the token to the default renderer.
-  return defaultRender(tokens, idx, options, env, self);
-};
+  return defaultRender(tokens, idx, options, env, self)
+}
 ```
 
 Note that if you need to add attributes, you can do so without a renderer override.
@@ -155,17 +152,16 @@ renderer override, but it can be more simple. Let's use the
 to do the same thing as in previous example:
 
 ```js
-var iterator = require('markdown-it-for-inline');
+const iterator = require('markdown-it-for-inline')
 
-var md = require('markdown-it')()
-            .use(iterator, 'url_new_win', 'link_open', function (tokens, idx) {
-              tokens[idx].attrSet('target', '_blank');
-            });
+const md = require('markdown-it')()
+  .use(iterator, 'url_new_win', 'link_open', (tokens, idx) => {
+    tokens[idx].attrSet('target', '_blank')
+  })
 ```
 
 You also can write your own renderer to generate formats other than HTML, such as
 JSON and XML. You can even use it to generate an AST.
-
 
 ## Summary
 

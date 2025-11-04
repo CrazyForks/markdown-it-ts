@@ -1,3 +1,5 @@
+// markdown-it default options
+
 const defaultPreset = {
   options: {
     html: false,
@@ -6,19 +8,15 @@ const defaultPreset = {
     langPrefix: 'language-',
     linkify: false,
     typographer: false,
-    quotes: '“”‘’',
+    quotes: '\u201C\u201D\u2018\u2019', /* ""'' */
     highlight: null,
+    maxNesting: 100,
   },
   components: {
-    core: {
-      rules: ['inline', 'block'],
-    },
-    block: {
-      rules: ['paragraph', 'heading', 'fenced_code'],
-    },
-    inline: {
-      rules: ['emphasis', 'strong', 'link'],
-    },
+    // Empty components means all rules are enabled by default
+    core: {},
+    block: {},
+    inline: {},
   },
 }
 

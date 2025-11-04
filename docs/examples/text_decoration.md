@@ -31,8 +31,8 @@ The plugin entry point will look like the following:
 
 ```typescript
 export default function smalltext_plugin(md: MarkdownIt) {
-  md.inline.ruler.after("emphasis", "smalltext", smalltext_tokenize)
-  md.inline.ruler2.after("emphasis", "smalltext", smalltext_postProcess)
+  md.inline.ruler.after('emphasis', 'smalltext', smalltext_tokenize)
+  md.inline.ruler2.after('emphasis', 'smalltext', smalltext_postProcess)
 }
 
 function smalltext_tokenize(state: StateInline, silent: boolean) {
@@ -74,7 +74,7 @@ function smalltext_tokenize(state: StateInline, silent: boolean) {
     return false
   }
 
-  if (marker !== 0x5e /* ^ */) {
+  if (marker !== 0x5E /* ^ */) {
     return false
   }
 
@@ -89,13 +89,13 @@ function smalltext_tokenize(state: StateInline, silent: boolean) {
   let token
 
   if (len % 2) {
-    token = state.push("text", "", 0)
+    token = state.push('text', '', 0)
     token.content = ch
     len--
   }
 
   for (let i = 0; i < len; i += 2) {
-    token = state.push("text", "", 0)
+    token = state.push('text', '', 0)
     token.content = ch + ch
 
     state.delimiters.push({
@@ -153,7 +153,7 @@ function smalltext_postProcess(state: StateInline) {
 }
 
 function postProcess(state: StateInline, delimiters: StateInline.Delimiter[]) {
-  return
+
 }
 ```
 
@@ -188,7 +188,7 @@ function postProcess(state: StateInline, delimiters: StateInline.Delimiter[]) {
   for (let i = 0; i < max; i++) {
     const startDelim = delimiters[i]
 
-    if (startDelim.marker !== 0x5e /* ^ */) {
+    if (startDelim.marker !== 0x5E /* ^ */) {
       continue
     }
 
@@ -202,22 +202,22 @@ function postProcess(state: StateInline, delimiters: StateInline.Delimiter[]) {
     const endDelim = delimiters[startDelim.end]
 
     token = state.tokens[startDelim.token]
-    token.type = "smalltext_open"
-    token.tag = "small"
+    token.type = 'smalltext_open'
+    token.tag = 'small'
     token.nesting = 1
-    token.markup = "^^"
-    token.content = ""
+    token.markup = '^^'
+    token.content = ''
 
     token = state.tokens[endDelim.token]
-    token.type = "smalltext_close"
-    token.tag = "small"
+    token.type = 'smalltext_close'
+    token.tag = 'small'
     token.nesting = -1
-    token.markup = "^^"
-    token.content = ""
+    token.markup = '^^'
+    token.content = ''
 
     if (
-      state.tokens[endDelim.token - 1].type === "text" &&
-      state.tokens[endDelim.token - 1].content === "^"
+      state.tokens[endDelim.token - 1].type === 'text'
+      && state.tokens[endDelim.token - 1].content === '^'
     ) {
       loneMarkers.push(endDelim.token - 1)
     }
@@ -233,7 +233,7 @@ function postProcess(state: StateInline, delimiters: StateInline.Delimiter[]) {
     const i = loneMarkers.pop() || 0
     let j = i + 1
 
-    while (j < state.tokens.length && state.tokens[j].type === "smalltext_close") {
+    while (j < state.tokens.length && state.tokens[j].type === 'smalltext_close') {
       j++
     }
 
@@ -285,4 +285,3 @@ thanks in large part to the heavy lifting that [balance_pairs](https://github.co
 > **the post-processing infrastructure can be safely ignored**!
 > Markdown parsing is complicated enough.
 > Please don't introduce any unnecessary complexity!
-

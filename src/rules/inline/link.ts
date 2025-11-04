@@ -36,8 +36,14 @@ export function link(state: any, silent?: boolean): boolean {
     start = pos
     res = parseLinkDestination(state.src, pos, state.posMax)
     if (res.ok) {
-      href = res.str
-      pos = res.pos
+      href = state.md.normalizeLink(res.str)
+      if (state.md.validateLink(href)) {
+        pos = res.pos
+      }
+      else {
+        href = ''
+      }
+
       for (; pos < max; pos++) {
         code = state.src.charCodeAt(pos)
         if (code !== 0x20 && code !== 0x0A)

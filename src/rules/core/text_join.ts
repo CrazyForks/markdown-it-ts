@@ -1,11 +1,12 @@
 import type { State } from '../../parse/state'
+import { Token } from '../../common/token'
 
 // Join adjacent text nodes inside inline tokens
 export function text_join(state: State): void {
   const tokens = state.tokens || []
   tokens.forEach((tk) => {
     if (tk.type === 'inline' && Array.isArray(tk.children)) {
-      const out: any[] = []
+      const out: Token[] = []
       for (let i = 0; i < tk.children.length; i++) {
         const ch = tk.children[i]
         if (ch.type === 'text') {
@@ -14,7 +15,10 @@ export function text_join(state: State): void {
             i++
             content += tk.children[i].content || ''
           }
-          out.push({ type: 'text', content, level: ch.level })
+          const textToken = new Token('text', '', 0)
+          textToken.content = content
+          textToken.level = ch.level
+          out.push(textToken)
         }
         else {
           out.push(ch)

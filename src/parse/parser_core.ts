@@ -1,12 +1,13 @@
 // src/parse/parser_core.ts
 
+import LinkifyIt from 'linkify-it'
 import { block } from '../rules/core/block'
 import { inline } from '../rules/core/inline'
 import { linkify } from '../rules/core/linkify'
 // Import core rules
 import { normalize } from '../rules/core/normalize'
-import { replacements } from '../rules/core/replacements'
 
+import { replacements } from '../rules/core/replacements'
 import { CoreRuler } from '../rules/core/ruler'
 import { smartquotes } from '../rules/core/smartquotes'
 import { text_join } from '../rules/core/text_join'
@@ -56,32 +57,52 @@ export class ParserCore {
   /**
    * Process tokens for the provided state. If state.inlineMode is true,
    * generate a single `inline` token from src and run inline parser only.
+   * Accepts md instance to inject options/helpers/hooks.
    */
-  public process(state: State): void {
+  public process(state: State, md?: any): void {
     // Extend state with reference to this parser instance (for core rules)
     const extendedState = state as any
-    extendedState.md = {
+
+    const defaultHelpers = {
+      parseLinkLabel: () => ({ ok: false, pos: 0 }),
+      parseLinkDestination: () => ({ ok: false, str: '', pos: 0 }),
+      parseLinkTitle: () => ({ ok: false, str: '', pos: 0, can_continue: false }),
+    }
+
+    const defaultOptions = {
+      html: true,
+      xhtmlOut: false,
+      breaks: false,
+      langPrefix: 'language-',
+      linkify: false,
+      typographer: false,
+      quotes: '\u201C\u201D\u2018\u2019',
+      maxNesting: 100,
+    }
+
+    const parserInstance: any = md ?? {
       block: this.block,
       inline: this.inline,
-      options: {
-        html: true,
-        xhtmlOut: false,
-        breaks: false,
-        langPrefix: 'language-',
-        linkify: false,
-        typographer: false,
-        quotes: '\u201C\u201D\u2018\u2019', // ""''
-        maxNesting: 100,
-      },
-      helpers: {
-        parseLinkLabel: () => ({ ok: false, pos: 0 }),
-        parseLinkDestination: () => ({ ok: false, str: '', pos: 0 }),
-        parseLinkTitle: () => ({ ok: false, str: '', pos: 0, can_continue: false }),
-      },
+      core: this,
+      options: defaultOptions,
+      helpers: defaultHelpers,
       normalizeLink,
       normalizeLinkText,
       validateLink,
+      linkify: new LinkifyIt(),
     }
+
+    parserInstance.block = parserInstance.block || this.block
+    parserInstance.inline = parserInstance.inline || this.inline
+    parserInstance.core = parserInstance.core || this
+    parserInstance.options = parserInstance.options || defaultOptions
+    parserInstance.helpers = parserInstance.helpers || defaultHelpers
+    parserInstance.normalizeLink = parserInstance.normalizeLink || normalizeLink
+    parserInstance.normalizeLinkText = parserInstance.normalizeLinkText || normalizeLinkText
+    parserInstance.validateLink = parserInstance.validateLink || validateLink
+    parserInstance.linkify = parserInstance.linkify || new LinkifyIt()
+
+    extendedState.md = parserInstance
 
     // Execute all core rules through the ruler
     // This includes: normalize, block, inline, linkify, replacements, smartquotes, text_join
@@ -94,15 +115,15 @@ export class ParserCore {
   /**
    * Convenience: parse src/env and return tokens.
    */
-  public parse(src?: string, env: Record<string, unknown> = {}): State {
+  public parse(src?: string, env: Record<string, unknown> = {}, md?: any): State {
     if (typeof src === 'string') {
       const state = this.createState(src, env)
-      this.process(state)
+      this.process(state, md)
       return state
     }
 
     if (this.state) {
-      this.process(this.state)
+      this.process(this.state, md)
       return this.state
     }
 

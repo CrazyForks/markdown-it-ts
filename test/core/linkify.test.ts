@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { parse } from '../../src/parse'
+import createMarkdownIt from '../../src'
 
 describe('core linkify', () => {
   it('converts plain http url to link tokens', () => {
+    const md = createMarkdownIt({ linkify: true })
     const src = 'Visit http://example.com now'
-    const state = parse(src) as any[]
+    const state = md.parse(src, {}) as any[]
     console.log({ state })
     debugger
     // find first inline token

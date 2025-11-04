@@ -1,5 +1,6 @@
 {
   "name": "markdown-it-ts",
+  "type": "module",
   "version": "0.0.0",
   "description": "A TypeScript implementation of the markdown-it library with separate parse and render functionalities.",
   "author": "Your Name",
@@ -11,11 +12,13 @@
     "typescript"
   ],
   "exports": {
-    "./parse": "./src/parse/index.ts",
-    "./render": "./src/render/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "main": "dist/index.js",
-  "module": "dist/index.esm.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsdown",
@@ -31,18 +34,26 @@
     "release": "bumpp --commit --tag --push && pnpm publish"
   },
   "dependencies": {
-    "linkify-it": "^3.0.3",
-    "mdurl": "^1.0.1",
-    "punycode.js": "^2.3.1"
+    "entities": "^4.5.0",
+    "linkify-it": "^5.0.0",
+    "mdurl": "^2.0.0",
+    "punycode.js": "^2.3.1",
+    "uc.micro": "^2.1.0"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "^5.4.1",
-    "eslint": "^9.38.0",
+    "@antfu/eslint-config": "^6.2.0",
+    "argparse": "^2.0.1",
+    "bumpp": "^8.2.1",
+    "chai": "^4.5.0",
+    "eslint": "^9.39.1",
+    "markdown-it-for-inline": "^2.0.1",
+    "markdown-it-testgen": "^0.1.6",
+    "needle": "^3.3.1",
+    "shelljs": "^0.10.0",
     "ts-node": "^10.9.2",
     "tsdown": "^0.15.12",
     "typescript": "^5.9.3",
     "vitest": "^4.0.6",
-    "bumpp": "^8.2.1",
     "vue-tsc": "^2.2.12"
   }
 }
