@@ -78,6 +78,9 @@ export class CoreRuler {
   }
 
   enableOnly(names: string[]) {
+    if (!Array.isArray(names)) {
+      throw new TypeError('enableOnly accepts only an array of rule names')
+    }
     const set = new Set(names)
     for (const r of this.rules) {
       r.enabled = set.has(r.name)

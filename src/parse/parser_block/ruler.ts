@@ -103,6 +103,9 @@ export class BlockRuler {
   }
 
   enableOnly(names: string[]): void {
+    if (!Array.isArray(names)) {
+      throw new TypeError('enableOnly accepts only an array of rule names')
+    }
     const allow = new Set(names)
     for (const r of this._rules) r.enabled = allow.has(r.name)
   }

@@ -86,6 +86,9 @@ export class InlineRuler {
   }
 
   public enableOnly(names: string[]): void {
+    if (!Array.isArray(names)) {
+      throw new TypeError('enableOnly accepts only an array of rule names')
+    }
     const allow = new Set(names)
     for (const r of this.rules) r.enabled = allow.has(r.name)
   }
