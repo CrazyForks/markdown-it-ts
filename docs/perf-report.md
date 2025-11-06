@@ -99,6 +99,23 @@ const html = md.render('# Title\n\nHello')
 
 See the latest auto-generated numbers in `docs/perf-latest.md`.
 
+## Remark parse (parse-only)
+
+We also include a Remark parser scenario (R1) to compare pure parse throughput. It exercises:
+
+```ts
+import { unified } from 'unified'
+import remarkParse from 'remark-parse'
+
+const u = unified().use(remarkParse)
+const tree = u.parse('# Title\n\nHello')
+```
+
+Notes:
+- This measures parse only (no HTML render). It appears in the perf matrix as `R1` when `unified` and `remark-parse` are installed.
+- Install deps once: `pnpm add -D unified remark-parse`.
+- Run the matrix as usual: `npm run perf:matrix`.
+
 ## Regenerate the report in CI
 
 You can refresh `docs/perf-latest.md` on demand via GitHub Actions:

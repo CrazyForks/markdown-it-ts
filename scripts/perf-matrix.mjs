@@ -5,6 +5,8 @@
 import { performance } from 'node:perf_hooks'
 import MarkdownIt from '../dist/index.js'
 import MarkdownItOriginal from 'markdown-it'
+import { unified } from 'unified'
+import remarkParse from 'remark-parse'
 
 function para(n) {
   return `## Section ${n}\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod.\n\n- a\n- b\n- c\n\n\`\`\`js\nconsole.log(${n})\n\`\`\`\n\n`
@@ -94,6 +96,7 @@ const scenarios = [
   { id: 'S4', label: 'stream OFF, chunk ON', make: makeMd_s4_full_chunk, type: 'full-chunk' },
   { id: 'S5', label: 'stream OFF, chunk OFF', make: makeMd_s5_full_plain, type: 'full-plain' },
   { id: 'M1', label: 'markdown-it (baseline)', make: () => MarkdownItOriginal(), type: 'md-original' },
+  { id: 'R1', label: 'remark (parse only)', make: () => unified().use(remarkParse), type: 'remark' },
 ]
 
 console.log('--- perf-matrix ---')
@@ -117,6 +120,7 @@ for (const size of SIZES) {
   const one = measure(() => (
     sc.type.startsWith('stream') ? md.stream.parse(doc, envStream)
     : sc.type === 'md-original' ? md.parse(doc, {})
+    : sc.type === 'remark' ? md.parse(doc)
     : md.parse(doc, {})
   ))
 
@@ -139,6 +143,8 @@ for (const size of SIZES) {
         md.stream.parse(acc, envStream)
       } else if (sc.type === 'md-original') {
         md.parse(acc, {})
+      } else if (sc.type === 'remark') {
+        md.parse(acc)
       } else {
         md.parse(acc, {})
       }
@@ -178,7 +184,7 @@ function printMarkdownTable(results) {
     if (!bySize.has(r.size)) bySize.set(r.size, [])
     bySize.get(r.size).push(r)
   }
-  const ids = ['S1','S2','S3','S4','S5','M1']
+  const ids = Array.from(new Set(scenarios.map(s => s.id)))
   const headers = ['Size (chars)', ...ids.map(id => `${id} one`), ...ids.map(id => `${id} append`)]
   console.log('\n| ' + headers.join(' | ') + ' |')
   console.log('|' + headers.map((_,i) => (i === 0 ? '---:' : '---:')).join('|') + '|')
