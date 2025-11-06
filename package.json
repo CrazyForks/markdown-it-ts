@@ -38,6 +38,10 @@
     "perf:matrix": "npm run build && node scripts/perf-matrix.mjs",
     "perf:sweep": "npm run build && node scripts/full-vs-chunked-sweep.mjs",
     "perf:generate": "npm run build && node scripts/perf-generate-report.mjs",
+    "perf:update-readme": "node scripts/update-readme-metrics.mjs",
+    "perf:compare": "node scripts/perf-compare.mjs docs/perf-latest.json",
+    "perf:check": "node scripts/perf-check.mjs --threshold=0.10",
+    "perf:all": "npm run perf:generate && npm run perf:update-readme && npm run perf:check",
     "perf:generate:zh": "npm run build && node scripts/perf-generate-report.zh.mjs"
   },
   "dependencies": {

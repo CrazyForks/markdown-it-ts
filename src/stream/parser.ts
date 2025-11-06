@@ -67,13 +67,18 @@ export class StreamParser {
     const envProvided = env
     const cached = this.cache
 
+    // Only update the cache on the very first parse or when the current
+    // source ends at a safe block boundary (double newline). This prevents
     if (!cached || (envProvided && envProvided !== cached.env)) {
       const workingEnv = envProvided ?? {}
 
       // Allow chunked for first parse when enabled and large enough
       const chunkedEnabled = !!md.options?.streamChunkedFallback
-      const chunkSizeChars = md.options?.streamChunkSizeChars ?? 10000
-      const chunkSizeLines = md.options?.streamChunkSizeLines ?? 200
+      const chunkAdaptive = md.options?.streamChunkAdaptive !== false
+      const targetChunks = md.options?.streamChunkTargetChunks ?? 8
+      const chunkSizeCharsCfg = md.options?.streamChunkSizeChars
+      const chunkSizeLinesCfg = md.options?.streamChunkSizeLines
+      const auto = md.options?.autoTuneChunks !== false
       const chunkFenceAware = md.options?.streamChunkFenceAware ?? true
 
       const srcLineCount = this.countLines(src)
@@ -90,22 +95,53 @@ export class StreamParser {
         this.stats.lastMode = 'full'
         return tokens
       }
-      else if (chunkedEnabled && (src.length >= (chunkSizeChars * 2) || srcLineCount >= (chunkSizeLines * 2))) {
-        const tokens = chunkedParse(md, src, workingEnv, {
-          maxChunkChars: chunkSizeChars,
-          maxChunkLines: chunkSizeLines,
-          fenceAware: chunkFenceAware,
-        })
-        this.cache = { src, tokens, env: workingEnv, lineCount: srcLineCount }
-        this.stats.total += 1
-        this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
-        this.stats.lastMode = 'chunked'
-        return tokens
+      else if (chunkedEnabled) {
+        const clamp = (v: number, lo: number, hi: number) => v < lo ? lo : (v > hi ? hi : v)
+        // Best-practice discrete mapping (append-focused) when user didn't force sizes
+        let useChars = chunkAdaptive ? clamp(Math.ceil(src.length / targetChunks), 8000, 32000) : (chunkSizeCharsCfg ?? 10000)
+        let useLines = chunkAdaptive ? clamp(Math.ceil(srcLineCount / targetChunks), 150, 350) : (chunkSizeLinesCfg ?? 200)
+        if (auto && !chunkSizeCharsCfg && !chunkSizeLinesCfg) {
+          if (src.length <= 5_000) {
+            useChars = 16_000
+            useLines = 250
+          }
+          else if (src.length <= 20_000) {
+            useChars = 16_000
+            useLines = 200
+          }
+          else if (src.length <= 50_000) {
+            useChars = 16_000
+            useLines = 250
+          }
+          else if (src.length <= 100_000) {
+            useChars = 10_000
+            useLines = 200
+          }
+          else {
+            useChars = 20_000
+            useLines = 200
+          }
+        }
+        // Avoid chunked fallback for character-by-character growth (no trailing newline)
+        const hasTrailingNewline = src.length > 0 && src.charCodeAt(src.length - 1) === 0x0A
+        if ((src.length >= (useChars * 2) || srcLineCount >= (useLines * 2)) && hasTrailingNewline) {
+          const tokens = chunkedParse(md, src, workingEnv, {
+            maxChunkChars: useChars,
+            maxChunkLines: useLines,
+            fenceAware: chunkFenceAware,
+          })
+          this.cache = { src, tokens, env: workingEnv, lineCount: srcLineCount }
+          this.stats.total += 1
+          this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
+          this.stats.lastMode = 'chunked'
+          return tokens
+        }
       }
 
       const state = this.core.parse(src, workingEnv, md)
       const tokens = state.tokens
       const lineCount = this.countLines(src)
+
       this.cache = { src, tokens, env: workingEnv, lineCount }
       this.stats.total += 1
       this.stats.fullParses += 1
@@ -142,6 +178,11 @@ export class StreamParser {
     if (appended) {
       // Fast-path: reuse existing tokens when new input is a clean append that starts on a fresh line.
       // This is conservative; edits requiring cross-block context still fall back to a full parse below.
+      // Special-case: a single trailing newline closes the last line but doesn't
+      // produce new tokens; we only need to extend end line maps for trailing blocks.
+      // no special-casing for single newline here; we only append when we have
+      // full line(s) content that end with a newline.
+
       const appendedState = this.core.parse(appended, cached.env, md)
 
       // Use cached line count if available
@@ -167,22 +208,53 @@ export class StreamParser {
 
     // Optional: use chunked parse as a fallback for very large documents
     const chunkedEnabled = !!md.options?.streamChunkedFallback
-    const chunkSizeChars = md.options?.streamChunkSizeChars ?? 10000
-    const chunkSizeLines = md.options?.streamChunkSizeLines ?? 200
+    const chunkAdaptive = md.options?.streamChunkAdaptive !== false
+    const targetChunks = md.options?.streamChunkTargetChunks ?? 8
+    const chunkSizeCharsCfg = md.options?.streamChunkSizeChars
+    const chunkSizeLinesCfg = md.options?.streamChunkSizeLines
+    const auto = md.options?.autoTuneChunks !== false
     const chunkFenceAware = md.options?.streamChunkFenceAware ?? true
 
     const srcLineCount2 = this.countLines(src)
-    if (chunkedEnabled && (src.length >= (chunkSizeChars * 2) || srcLineCount2 >= (chunkSizeLines * 2))) {
-      const tokens = chunkedParse(md, src, fallbackEnv, {
-        maxChunkChars: chunkSizeChars,
-        maxChunkLines: chunkSizeLines,
-        fenceAware: chunkFenceAware,
-      })
-      this.cache = { src, tokens, env: fallbackEnv, lineCount: srcLineCount2 }
-      this.stats.total += 1
-      this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
-      this.stats.lastMode = 'chunked'
-      return tokens
+    if (chunkedEnabled) {
+      const clamp = (v: number, lo: number, hi: number) => v < lo ? lo : (v > hi ? hi : v)
+      let useChars = chunkAdaptive ? clamp(Math.ceil(src.length / targetChunks), 8000, 32000) : (chunkSizeCharsCfg ?? 10000)
+      let useLines = chunkAdaptive ? clamp(Math.ceil(srcLineCount2 / targetChunks), 150, 350) : (chunkSizeLinesCfg ?? 200)
+      if (auto && !chunkSizeCharsCfg && !chunkSizeLinesCfg) {
+        if (src.length <= 5_000) {
+          useChars = 16_000
+          useLines = 250
+        }
+        else if (src.length <= 20_000) {
+          useChars = 16_000
+          useLines = 200
+        }
+        else if (src.length <= 50_000) {
+          useChars = 16_000
+          useLines = 250
+        }
+        else if (src.length <= 100_000) {
+          useChars = 10_000
+          useLines = 200
+        }
+        else {
+          useChars = 20_000
+          useLines = 200
+        }
+      }
+      const hasTrailingNewline2 = src.length > 0 && src.charCodeAt(src.length - 1) === 0x0A
+      if ((src.length >= (useChars * 2) || srcLineCount2 >= (useLines * 2)) && hasTrailingNewline2) {
+        const tokens = chunkedParse(md, src, fallbackEnv, {
+          maxChunkChars: useChars,
+          maxChunkLines: useLines,
+          fenceAware: chunkFenceAware,
+        })
+        this.cache = { src, tokens, env: fallbackEnv, lineCount: srcLineCount2 }
+        this.stats.total += 1
+        this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
+        this.stats.lastMode = 'chunked'
+        return tokens
+      }
     }
 
     const fullState = this.core.parse(src, fallbackEnv, md)
@@ -196,58 +268,43 @@ export class StreamParser {
   }
 
   private getAppendedSegment(prev: string, next: string): string | null {
-    // Quick length check first
-    const prevLen = prev.length
-    const nextLen = next.length
-    if (nextLen <= prevLen)
-      return null
-
-    // Check if prev is a prefix (optimized for common case)
     if (!next.startsWith(prev))
       return null
 
-    // Check if prev ends with newline (use charCodeAt for speed)
-    if (prev.charCodeAt(prevLen - 1) !== 0x0A) // '\n'
+    if (!prev.endsWith('\n'))
       return null
 
-    const segment = next.slice(prevLen)
-    const segLen = segment.length
-
-    // Must have content
-    if (segLen === 0)
+    const segment = next.slice(prev.length)
+    if (!segment)
       return null
 
-    // Must end with newline
-    if (segment.charCodeAt(segLen - 1) !== 0x0A)
+    if (!segment.includes('\n'))
       return null
 
-    // Fast check for at least one newline in the middle
-    // (we know first char could be newline, and last char is newline)
-    // We need at least 2 newlines total for a valid append
+    if (!segment.endsWith('\n'))
+      return null
+
     let newlineCount = 0
-    for (let i = 0; i < segLen && newlineCount < 2; i++) {
+    for (let i = 0; i < segment.length; i++) {
       if (segment.charCodeAt(i) === 0x0A)
         newlineCount++
     }
-
     if (newlineCount < 2)
       return null
 
     // Prevent setext heading underlines from using the fast-path since they
     // retroactively change the previous line's block type.
     const firstLineBreak = segment.indexOf('\n')
-    const firstLine = segment.slice(0, firstLineBreak)
+    const firstLine = firstLineBreak === -1 ? segment : segment.slice(0, firstLineBreak)
     const trimmedFirstLine = firstLine.trim()
 
     if (trimmedFirstLine.length === 0)
       return null
 
-    // Check for setext underline (all dashes or equals)
     if (/^[-=]+$/.test(trimmedFirstLine)) {
-      // Check if previous line has content (would make it a setext heading)
-      const prevWithoutNewline = prev.slice(0, prevLen - 1)
-      const lastBreak = prevWithoutNewline.lastIndexOf('\n')
-      const previousLine = prevWithoutNewline.slice(lastBreak + 1)
+      const prevWithoutTrailingNewline = prev.slice(0, -1)
+      const lastBreak = prevWithoutTrailingNewline.lastIndexOf('\n')
+      const previousLine = prevWithoutTrailingNewline.slice(lastBreak + 1)
       if (previousLine.trim().length > 0)
         return null
     }
@@ -297,6 +354,22 @@ export class StreamParser {
         for (let i = token.children.length - 1; i >= 0; i--) {
           stack.push(token.children[i])
         }
+      }
+    }
+  }
+
+  // Extend end-line map for all tokens that currently end on oldEndLine.
+  // This is used when appending a single trailing newline, which doesn't
+  // introduce new tokens but advances the end line number by 1.
+  private extendEndingLine(tokens: Token[], oldEndLine: number, delta: number): void {
+    const stack: Token[] = [...tokens]
+    while (stack.length > 0) {
+      const t = stack.pop()!
+      if (t.map && t.map[1] === oldEndLine)
+        t.map = [t.map[0], t.map[1] + delta]
+      if (t.children) {
+        for (let i = t.children.length - 1; i >= 0; i--)
+          stack.push(t.children[i])
       }
     }
   }

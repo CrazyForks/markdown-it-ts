@@ -54,6 +54,19 @@ Append fast-path confirmation: With a stable env object, `appendHits` reached 5 
   - Start with `streamChunkSizeChars ≈ 10k`, `streamChunkSizeLines ≈ 200`.
   - For full parse chunked fallback, start with `fullChunkThresholdChars ≈ 20k`, `fullChunkThresholdLines ≈ 400`, and chunk size `8k–16k` chars, `150–250` lines.
 
+## Adaptive chunk sizing (default)
+
+Both full and stream chunked fallbacks choose chunk sizes adaptively by default:
+
+- Target around 8 chunks (`fullChunkTargetChunks` / `streamChunkTargetChunks`), clamped to a practical range.
+- Effective sizes: `ceil(docChars / target)` clamped to `[8k, 32k]` for characters and `[150, 350]` for lines.
+- Disable with `fullChunkAdaptive: false` or `streamChunkAdaptive: false` and pass fixed `*SizeChars/*SizeLines`.
+- Optionally cap the number of chunks with `fullChunkMaxChunks`.
+
+Notes:
+- Adaptive sizing reduces the chance of over-chunking at ~100k+ where orchestration cost can dominate.
+- Even with adaptive sizing, one-shot full parse (S5) can remain faster for some inputs. Validate on your data.
+
 ## How to reproduce
 
 - Build and run the matrix:

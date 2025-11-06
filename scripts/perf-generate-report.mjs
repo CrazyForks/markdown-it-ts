@@ -3,7 +3,8 @@
 // Run: node scripts/perf-generate-report.mjs
 
 import { performance } from 'node:perf_hooks'
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import MarkdownIt from '../dist/index.js'
 import MarkdownItOriginal from 'markdown-it'
 
@@ -41,7 +42,7 @@ function measure(fn, iters = 1) {
 
 function fmt(ms) { return `${ms.toFixed(2)}ms` }
 
-const SIZES = [5_000, 20_000, 50_000, 100_000]
+const SIZES = [5_000, 20_000, 50_000, 100_000, 200_000]
 const APP_STEPS = 6
 
 function makeScenarios() {
@@ -71,18 +72,20 @@ function runMatrix() {
 
     for (const sc of scenarios) {
       const md = sc.make()
-      const envStream = { bench: true }
+  const envStream = { bench: true }
+  const envOne = { bench: true }
 
       // one-shot
       const one = measure(() => (
         sc.type.startsWith('stream') ? md.stream.parse(doc, envStream)
         : sc.type === 'md-original' ? md.parse(doc, {})
-        : md.parse(doc, {})
+        : md.parse(doc, envOne)
       ))
 
       // append workload
-      let acc = ''
-      let appendMs = 0
+  let acc = ''
+  let appendMs = 0
+  const envAppend = { bench: true }
       for (let i = 0; i < appParts.length; i++) {
         if (acc.length && acc.charCodeAt(acc.length - 1) !== 0x0A) acc += '\n'
         let piece = appParts[i]
@@ -92,7 +95,7 @@ function runMatrix() {
         const t = performance.now()
   if (sc.type.startsWith('stream')) md.stream.parse(acc, envStream)
   else if (sc.type === 'md-original') md.parse(acc, {})
-  else md.parse(acc, {})
+  else md.parse(acc, envAppend)
         appendMs += performance.now() - t
       }
 
@@ -104,6 +107,8 @@ function runMatrix() {
         appendWorkloadMs: appendMs,
         lastMode: md.stream?.stats?.().lastMode || 'n/a',
         appendHits: md.stream?.stats?.().appendHits || 0,
+        chunkInfoOne: (sc.type === 'full-chunk') ? (envOne.__mdtsChunkInfo || null) : (sc.type.startsWith('stream') ? (envStream.__mdtsChunkInfo || null) : null),
+        chunkInfoAppendLast: (sc.type === 'full-chunk') ? (envAppend.__mdtsChunkInfo || null) : (sc.type.startsWith('stream') ? (envStream.__mdtsChunkInfo || null) : null),
       }
       results.push(stat)
     }
@@ -194,6 +199,22 @@ function toMarkdown(results) {
   lines.push('')
   lines.push('- One ratio < 1.00 means markdown-it-ts best one-shot is faster than baseline.')
   lines.push('- Append ratio < 1.00 highlights stream cache optimizations (fast-path appends).')
+  lines.push('')
+  // Optional diagnostic: chunk info if present
+  const hasChunkInfo = results.some(r => r.chunkInfoOne || r.chunkInfoAppendLast)
+  if (hasChunkInfo) {
+    lines.push('')
+    lines.push('### Diagnostic: Chunk Info (if chunked)')
+    lines.push('')
+    lines.push('| Size (chars) | S1 one chunks | S3 one chunks | S4 one chunks | S1 append last | S3 append last | S4 append last |')
+    lines.push('|---:|---:|---:|---:|---:|---:|---:|')
+    const bySize3 = groupBy(results, 'size')
+    for (const [size, arr] of Array.from(bySize3.entries()).sort((a,b)=>a[0]-b[0])) {
+      const r = Object.fromEntries(arr.map(x => [x.scenario, x]))
+      const c = (x) => x ? String(x.count) : '-'
+      lines.push(`| ${size} | ${c(r.S1?.chunkInfoOne)} | ${c(r.S3?.chunkInfoOne)} | ${c(r.S4?.chunkInfoOne)} | ${c(r.S1?.chunkInfoAppendLast)} | ${c(r.S3?.chunkInfoAppendLast)} | ${c(r.S4?.chunkInfoAppendLast)} |`)
+    }
+  }
   return lines.join('\n')
 }
 
@@ -210,4 +231,23 @@ function groupBy(arr, key) {
 const results = runMatrix()
 const md = toMarkdown(results)
 writeFileSync(new URL('../docs/perf-latest.md', import.meta.url), md)
-console.log('Wrote docs/perf-latest.md')
+
+// Also write a machine-readable JSON for regression checks
+const payload = {
+  generatedAt: new Date().toISOString(),
+  node: process.version,
+  results,
+}
+writeFileSync(new URL('../docs/perf-latest.json', import.meta.url), JSON.stringify(payload, null, 2))
+
+// Optionally store a history snapshot keyed by short git SHA if available
+try {
+  const sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  if (sha) {
+    const histDir = new URL('../docs/perf-history/', import.meta.url)
+    if (!existsSync(histDir)) mkdirSync(histDir, { recursive: true })
+    writeFileSync(new URL(`./perf-${sha}.json`, histDir), JSON.stringify(payload, null, 2))
+  }
+} catch {}
+
+console.log('Wrote docs/perf-latest.md and docs/perf-latest.json')

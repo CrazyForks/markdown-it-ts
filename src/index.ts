@@ -14,11 +14,14 @@ import { chunkedParse } from './stream/chunked'
 import { StreamParser } from './stream/parser'
 
 export { Token } from './common/token'
+
 export { parse, parseInline } from './parse'
 export { withRenderer } from './plugins/with-renderer'
+export { StreamBuffer } from './stream/buffer'
 export { chunkedParse } from './stream/chunked'
 export type { ChunkedOptions } from './stream/chunked'
 export type { StreamStats } from './stream/parser'
+export { recommendFullChunkStrategy, recommendStreamChunkStrategy } from './support/chunk_recommend'
 
 type QuotesOption = string | [string, string, string, string]
 
@@ -40,6 +43,9 @@ export interface MarkdownItOptions {
   streamChunkSizeChars?: number
   streamChunkSizeLines?: number
   streamChunkFenceAware?: boolean
+  // Adaptive chunk sizing for stream chunked fallback (if true, sizes chosen by doc size)
+  streamChunkAdaptive?: boolean
+  streamChunkTargetChunks?: number
   // Full (non-stream) parse: optional chunked mode
   fullChunkedFallback?: boolean
   fullChunkThresholdChars?: number
@@ -48,6 +54,11 @@ export interface MarkdownItOptions {
   fullChunkSizeLines?: number
   fullChunkFenceAware?: boolean
   fullChunkMaxChunks?: number
+  // Adaptive chunk sizing for full chunked fallback (if true, sizes chosen by doc size)
+  fullChunkAdaptive?: boolean
+  fullChunkTargetChunks?: number
+  // Auto-tune best-practice chunk strategy by doc size when user did not provide explicit sizes
+  autoTuneChunks?: boolean
 }
 
 interface Preset { options?: MarkdownItOptions, components?: any }
@@ -112,13 +123,18 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
     streamChunkSizeChars: 10000,
     streamChunkSizeLines: 200,
     streamChunkFenceAware: true,
+    streamChunkAdaptive: true,
+    streamChunkTargetChunks: 8,
     fullChunkedFallback: false,
     fullChunkThresholdChars: 20_000,
     fullChunkThresholdLines: 400,
     fullChunkSizeChars: 10_000,
     fullChunkSizeLines: 200,
     fullChunkFenceAware: true,
+    fullChunkAdaptive: true,
+    fullChunkTargetChunks: 8,
     fullChunkMaxChunks: undefined,
+    autoTuneChunks: true,
   }
 
   // preset and options resolution (compatible semantics)
@@ -273,20 +289,57 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
       if (typeof src !== 'string')
         throw new TypeError('Input data should be a String')
       // Optional chunked path for full parse (non-stream)
-      if (!this.stream.enabled && this.options.fullChunkedFallback) {
+      if (!this.stream.enabled) {
         const chars = src.length
         const lines = src.split('\n').length - 1
-        const useChunked = (chars >= (this.options.fullChunkThresholdChars ?? 20_000))
-          || (lines >= (this.options.fullChunkThresholdLines ?? 400))
-        if (useChunked) {
-          // Reuse chunked options but allow full-specific overrides
-          const tokens = chunkedParse(this, src, env, {
-            maxChunkChars: this.options.fullChunkSizeChars ?? 10_000,
-            maxChunkLines: this.options.fullChunkSizeLines ?? 200,
-            fenceAware: this.options.fullChunkFenceAware ?? true,
-            maxChunks: this.options.fullChunkMaxChunks,
-          })
-          return tokens
+        if (this.options.fullChunkedFallback) {
+          // Best-practice auto-tuning: choose strategy by size if user didn't force a strategy
+          const auto = this.options.autoTuneChunks !== false
+          const userForcedChunk = (this.options.fullChunkSizeChars || this.options.fullChunkSizeLines)
+          if (auto && !userForcedChunk) {
+            // Discrete best-practice from tune script (one-shot focus)
+            //  - <=5k: chunk(32k/150, maxChunks=8)
+            //  - <=20k: chunk(24k/200, maxChunks=12)
+            //  - <=50k: plain
+            //  - <=100k: plain
+            //  - >100k and <=200k: chunk(20k/150, maxChunks=12)
+            //  - >200k: adaptive fallback
+            const fenceAware = this.options.fullChunkFenceAware ?? true
+            if (chars <= 5_000) {
+              return chunkedParse(this, src, env, { maxChunkChars: 32_000, maxChunkLines: 150, fenceAware, maxChunks: 8 })
+            }
+            else if (chars <= 20_000) {
+              return chunkedParse(this, src, env, { maxChunkChars: 24_000, maxChunkLines: 200, fenceAware, maxChunks: 12 })
+            }
+            else if (chars <= 50_000 || chars <= 100_000) {
+              // plain full parse preferred at 50k/100k
+            }
+            else if (chars <= 200_000) {
+              return chunkedParse(this, src, env, { maxChunkChars: 20_000, maxChunkLines: 150, fenceAware, maxChunks: 12 })
+            }
+            // For >200k, fall through to adaptive below
+          }
+          const useChunked = (chars >= (this.options.fullChunkThresholdChars ?? 20_000))
+            || (lines >= (this.options.fullChunkThresholdLines ?? 400))
+          if (useChunked) {
+            // Reuse chunked options but allow full-specific overrides
+            const clamp = (v: number, lo: number, hi: number) => v < lo ? lo : (v > hi ? hi : v)
+            const adaptive = this.options.fullChunkAdaptive !== false
+            const target = this.options.fullChunkTargetChunks ?? 8
+            const dynMaxChunkChars = clamp(Math.ceil(chars / target), 8000, 32000)
+            const dynMaxChunkLines = clamp(Math.ceil(lines / target), 150, 350)
+            const maxChunkChars = adaptive ? dynMaxChunkChars : (this.options.fullChunkSizeChars ?? 10_000)
+            const maxChunkLines = adaptive ? dynMaxChunkLines : (this.options.fullChunkSizeLines ?? 200)
+            const maxChunks = adaptive ? Math.max(6, Math.min(12, target)) : this.options.fullChunkMaxChunks
+
+            const tokens = chunkedParse(this, src, env, {
+              maxChunkChars,
+              maxChunkLines,
+              fenceAware: this.options.fullChunkFenceAware ?? true,
+              maxChunks,
+            })
+            return tokens
+          }
         }
       }
       const state = core.parse(src, env, this)

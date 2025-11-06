@@ -1,0 +1,54 @@
+name: Perf Regression
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          fetch-depth: 0
+
+      - name: Checkout head
+        uses: actions/checkout@v4
+        with:
+          path: head
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install deps (base)
+        run: pnpm -C base install --frozen-lockfile
+
+      - name: Build (base)
+        run: pnpm -C base run build
+
+      - name: Generate perf snapshot (base)
+        run: pnpm -C base run perf:generate
+
+      - name: Install deps (head)
+        run: pnpm -C head install --frozen-lockfile
+
+      - name: Build (head)
+        run: pnpm -C head run build
+
+      - name: Generate perf snapshot (head)
+        run: pnpm -C head run perf:generate
+
+      - name: Compare perf snapshots
+        run: node head/scripts/perf-compare.mjs head/docs/perf-latest.json base/docs/perf-latest.json --threshold=0.10

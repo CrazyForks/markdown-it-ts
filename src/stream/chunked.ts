@@ -37,6 +37,16 @@ export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, un
   let lineOffset = 0
   const out: Token[] = []
 
+  // Expose diagnostic chunk info on env for tooling/benchmarks
+  try {
+    ;(env as any).__mdtsChunkInfo = {
+      count: chunks.length,
+      maxChunkChars: options.maxChunkChars,
+      maxChunkLines: options.maxChunkLines,
+    }
+  }
+  catch {}
+
   for (const ch of chunks) {
     const state = md.core.parse(ch, env, md)
     const tokens = state.tokens

@@ -130,6 +130,8 @@ const md = markdownIt({
   stream: true, // enable stream mode
   streamChunkedFallback: true, // use chunked on first large parse or large non-append edits
   // optional tuning
+  // By default, chunk size is adaptive to doc size (streamChunkAdaptive: true)
+  // You can pin fixed sizes by setting streamChunkAdaptive: false
   streamChunkSizeChars: 10_000,
   streamChunkSizeLines: 200,
   streamChunkFenceAware: true,
@@ -154,6 +156,65 @@ More:
 - Full performance matrix across modes and sizes: `npm run perf:matrix`
 - Non-stream chunked sweep to tune thresholds: `npm run perf:sweep`
 - See detailed findings in `docs/perf-report.md`.
+
+Adaptive chunk sizing
+- Non-stream full fallback now chooses chunk size automatically by default (`fullChunkAdaptive: true`), targeting ~8 chunks and clamping sizes into practical ranges.
+- Stream chunked fallback also uses adaptive sizing by default (`streamChunkAdaptive: true`).
+- You can restore fixed sizes by setting the respective `*Adaptive: false` flags or by providing explicit `*SizeChars/*SizeLines` values.
+
+### Programmatic recommendations
+
+If you want to display or persist the suggested chunk settings without enabling auto-tune, you can query them directly:
+
+```ts
+import markdownIt, { recommendFullChunkStrategy, recommendStreamChunkStrategy } from 'markdown-it-ts'
+
+const size = 50_000
+const fullRec = recommendFullChunkStrategy(size)
+// { strategy: 'plain', fenceAware: true }
+
+const streamRec = recommendStreamChunkStrategy(size)
+// { strategy: 'discrete', maxChunkChars: 16_000, maxChunkLines: 250, fenceAware: true }
+```
+
+These mirror the same mappings used internally when `autoTuneChunks: true` and no explicit sizes are provided.
+
+### Performance regression checks
+
+To make sure each change is not slower than the previous run at any tested size/config, we ship a tiny perf harness and a comparator:
+
+- Generate the latest report and snapshot:
+  - `npm run perf:generate` → writes `docs/perf-latest.md` and `docs/perf-latest.json`
+  - Also archives `docs/perf-history/perf-<shortSHA>.json` when git is available
+- Compare two snapshots (fail on regressions beyond threshold):
+  - `node scripts/perf-compare.mjs docs/perf-latest.json docs/perf-history/perf-<baselineSHA>.json --threshold=0.10`
+
+See `docs/perf-regression.md` for details and CI usage.
+
+## Parse performance vs markdown-it
+
+Latest one-shot parse results on this machine (Node.js v23): markdown-it-ts is roughly at parity with upstream markdown-it in the 5k–100k range.
+
+Examples from the latest run (avg over 20 iterations):
+<!-- perf-auto:one-examples:start -->
+- 5,000 chars: 0.60ms vs 6.09ms → ~10.2× faster (0.10× time)
+- 20,000 chars: 1.31ms vs 2.67ms → ~2.0× faster (0.49× time)
+- 50,000 chars: 2.26ms vs 2.29ms → ~1.0× faster (0.99× time)
+- 100,000 chars: 5.35ms vs 5.85ms → ~1.1× faster (0.91× time)
+<!-- perf-auto:one-examples:end -->
+
+Notes
+- Numbers vary by Node version, CPU, and content shape; see `docs/perf-latest.md` for the full table and environment details.
+- Streaming/incremental mode is correctness-first by default. For editor-style input, using `StreamBuffer` to flush at block boundaries can yield meaningful wins on append-heavy workloads.
+
+Reproduce locally
+
+```bash
+pnpm build
+node scripts/bench-compare.mjs
+```
+
+This will update `docs/perf-latest.md` and refresh the snippet above.
 
 ## Contributing
 

@@ -14,4 +14,6 @@ __Content__:
 - [Latest performance run (auto-generated)](perf-latest.md)
 - [最新性能报告（自动生成，中文）](perf-latest.zh-CN.md)
 - [Best-of vs baseline (snapshot)](perf-best-vs-baseline.md)
+ - [Tuned chunk configs (latest run)](tuned-chunk-config.md)
+- [为什么选择 markdown-it-ts（性能对比，中文）](why-switch.zh-CN.md)
 - [Examples](./examples)

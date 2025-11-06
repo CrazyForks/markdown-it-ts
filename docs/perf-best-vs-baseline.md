@@ -9,10 +9,10 @@ For full details and raw scenario matrix, see `docs/perf-latest.md`.
 
 | Size (chars) | TS best one | Baseline one | One ratio | TS best append | Baseline append | Append ratio | TS scenario (one/append) |
 |---:|---:|---:|---:|---:|---:|---:|:--|
-| 5000 | 0.87ms | 5.03ms | 0.17x | 0.68ms | 2.77ms | 0.25x | S2/S3 |
-| 20000 | 0.98ms | 1.82ms | 0.54x | 1.28ms | 4.94ms | 0.26x | S3/S2 |
-| 50000 | 2.21ms | 2.31ms | 0.96x | 2.41ms | 9.56ms | 0.25x | S5/S2 |
-| 100000 | 4.17ms | 5.45ms | 0.76x | 19.79ms | 16.87ms | 1.17x | S5/S1 |
+| 5000 | 0.70ms | 5.47ms | 0.13x | 0.73ms | 2.71ms | 0.27x | S4/S3 |
+| 20000 | 1.10ms | 1.82ms | 0.60x | 1.26ms | 4.77ms | 0.26x | S5/S3 |
+| 50000 | 2.50ms | 3.61ms | 0.69x | 2.48ms | 10.09ms | 0.25x | S2/S2 |
+| 100000 | 5.50ms | 5.73ms | 0.96x | 18.68ms | 17.24ms | 1.08x | S5/S5 |
 
 Notes:
 - One ratio < 1.00 means markdown-it-ts best one-shot is faster than baseline.

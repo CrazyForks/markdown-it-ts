@@ -622,11 +622,13 @@ graph TD
       expect(tokensWithStream).toEqual(tokensWithoutStream)
     }
 
-  const referenceTokens = MarkdownIt().parse(longDoc)
+    const referenceTokens = MarkdownIt().parse(longDoc)
     expect(tokensWithStream).toEqual(referenceTokens)
 
     const stats = mdWithStream.stream.stats()
     expect(stats.total).toBe(longDoc.length)
+    // Note: with conservative heuristics, char-by-char often falls back to full parse.
+    // We only assert parity and total; appendHits may be 0 depending on content shape.
     expect(stats.fullParses).toBeGreaterThan(0)
   })
 })
