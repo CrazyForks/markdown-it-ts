@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="rg" cx="50%" cy="40%" r="80%">
+      <stop offset="0%" stop-color="#111b3a"/>
+      <stop offset="100%" stop-color="#0b0f19"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1f2937" stroke-width="1"/>
+    </pattern>
+    <style>
+      .t{ font: 800 74px/1 ui-sans-serif, Inter, system-ui, -apple-system; fill:#E6FBFF; filter:url(#glow) }
+      .s{ font: 600 28px/1.3 ui-sans-serif, Inter, system-ui, -apple-system; fill:#8BE9FD; }
+      .tag{ font: 700 22px/1 ui-sans-serif, Inter, system-ui, -apple-system; fill:#22d3ee; }
+      .label{ font: 700 22px/1.2 ui-sans-serif, Inter, system-ui, -apple-system; fill:#E6FBFF; }
+      .ms{ font: 800 28px/1.2 ui-sans-serif, Inter, system-ui, -apple-system; fill:#E6FBFF; }
+      .vs{ font: 600 18px/1 ui-sans-serif, Inter, system-ui, -apple-system; fill:#8BE9FD; }
+      .x{ font: 900 26px/1 ui-sans-serif, Inter, system-ui, -apple-system; fill:#22d3ee; }
+      .foot{ font: 700 20px/1 ui-sans-serif, Inter, system-ui, -apple-system; fill:#94a3b8; }
+    </style>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#rg)"/>
+  <rect x="0" y="0" width="100%" height="100%" fill="url(#grid)" opacity="0.35"/>
+  <circle cx="980" cy="80" r="180" fill="#a78bfa" opacity="0.18"/>
+  <circle cx="160" cy="560" r="140" fill="#22d3ee" opacity="0.16"/>
+
+  <text x="56" y="128" class="t">markdown-it-ts</text>
+  <text x="56" y="178" class="s">TypeScript rewrite of markdown-it</text>
+
+  <g transform="translate(56, 212)">
+    <rect x="0" y="-22" width="160" height="36" rx="10" fill="rgba(34,211,238,0.10)" stroke="#22d3ee"/>
+    <text x="14" y="3" class="tag">Type-safe</text>
+    <rect x="180" y="-22" width="140" height="36" rx="10" fill="rgba(34,211,238,0.10)" stroke="#22d3ee"/>
+    <text x="194" y="3" class="tag">Modular</text>
+    <rect x="340" y="-22" width="230" height="36" rx="10" fill="rgba(34,211,238,0.10)" stroke="#22d3ee"/>
+    <text x="354" y="3" class="tag">Streaming parser</text>
+  </g>
+
+  <g transform="translate(0, 280)">
+    
+      <g transform="translate(56,0)">
+        <rect x="0" y="0" width="340" height="220" rx="16" fill="rgba(17,24,39,0.55)" stroke="#22d3ee" opacity="0.9"/>
+        <text x="16" y="40" class="label">One-shot · 100k</text>
+        <text x="16" y="92" class="ms">6.20ms</text>
+        <text x="16" y="124" class="vs">vs baseline 5.01ms</text>
+        <text x="16" y="164" class="x">~0.8×</text>
+      </g>
+      <g transform="translate(436,0)">
+        <rect x="0" y="0" width="340" height="220" rx="16" fill="rgba(17,24,39,0.55)" stroke="#22d3ee" opacity="0.9"/>
+        <text x="16" y="40" class="label">Append · 20k</text>
+        <text x="16" y="92" class="ms">1.13ms</text>
+        <text x="16" y="124" class="vs">vs baseline 2.92ms</text>
+        <text x="16" y="164" class="x">~2.6×</text>
+      </g>
+      <g transform="translate(816,0)">
+        <rect x="0" y="0" width="340" height="220" rx="16" fill="rgba(17,24,39,0.55)" stroke="#22d3ee" opacity="0.9"/>
+        <text x="16" y="40" class="label">Append · 50k</text>
+        <text x="16" y="92" class="ms">3.28ms</text>
+        <text x="16" y="124" class="vs">vs baseline 7.26ms</text>
+        <text x="16" y="164" class="x">~2.2×</text>
+      </g>
+  </g>
+
+  <text x="56" y="574" class="foot">github.com/Simon-He95/markdown-it-ts</text>
+</svg>

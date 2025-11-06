@@ -208,10 +208,10 @@ Latest one-shot parse results on this machine (Node.js v23): markdown-it-ts is r
 
 Examples from the latest run (avg over 20 iterations):
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.00ms vs 0.40ms → ~2081.1× faster (0.00× time)
-- 20,000 chars: 0.96ms vs 0.90ms → ~0.9× faster (1.06× time)
-- 50,000 chars: 2.55ms vs 2.33ms → ~0.9× faster (1.10× time)
-- 100,000 chars: 5.93ms vs 6.55ms → ~1.1× faster (0.91× time)
+- 5,000 chars: 0.00ms vs 0.39ms → ~2231.9× faster (0.00× time)
+- 20,000 chars: 0.92ms vs 2.33ms → ~2.5× faster (0.40× time)
+- 50,000 chars: 2.53ms vs 2.16ms → ~0.9× faster (1.17× time)
+- 100,000 chars: 5.67ms vs 4.93ms → ~0.9× faster (1.15× time)
 <!-- perf-auto:one-examples:end -->
 
 Notes
