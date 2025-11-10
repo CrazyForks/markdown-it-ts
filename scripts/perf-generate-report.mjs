@@ -7,6 +7,8 @@ import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import MarkdownIt from '../dist/index.js'
 import MarkdownItOriginal from 'markdown-it'
+import { unified } from 'unified'
+import remarkParse from 'remark-parse'
 
 function para(n) {
   return `## Section ${n}\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod.\n\n- a\n- b\n- c\n\n\`\`\`js\nconsole.log(${n})\n\`\`\`\n\n`
@@ -68,6 +70,8 @@ function makeScenarios() {
     { id: 'S4', label: 'stream OFF, chunk ON', make: s4, type: 'full-chunk' },
     { id: 'S5', label: 'stream OFF, chunk OFF', make: s5, type: 'full-plain' },
     { id: 'M1', label: 'markdown-it (baseline)', make: () => MarkdownItOriginal(), type: 'md-original' },
+    // Remark parse-only scenario (parse throughput, no HTML render)
+    { id: 'R1', label: 'remark (parse only)', make: () => unified().use(remarkParse), type: 'remark' },
   ]
 }
 
@@ -90,10 +94,12 @@ function runMatrix() {
       // warmup
       if (sc.type.startsWith('stream')) md.stream.parse(doc, envStream)
       else if (sc.type === 'md-original') md.parse(doc, {})
+      else if (sc.type === 'remark') md.parse(doc)
       else md.parse(doc, envOne)
       const one = measure(() => (
         sc.type.startsWith('stream') ? md.stream.parse(doc, envStream)
         : sc.type === 'md-original' ? md.parse(doc, {})
+        : sc.type === 'remark' ? md.parse(doc)
         : md.parse(doc, envOne)
       ), oneIters)
 
@@ -122,12 +128,13 @@ function runMatrix() {
           let piece = appParts[i]
           if (piece.length && piece.charCodeAt(piece.length - 1) !== 0x0A) piece += '\n'
           acc += piece
-          if (sc.type === 'stream-no-cache-chunk') md.stream.reset()
-          const t = performance.now()
-  if (sc.type.startsWith('stream')) md.stream.parse(acc, envStream)
-  else if (sc.type === 'md-original') md.parse(acc, {})
-  else md.parse(acc, envAppend)
-          appendMs += performance.now() - t
+    if (sc.type === 'stream-no-cache-chunk') md.stream.reset()
+    const t = performance.now()
+    if (sc.type.startsWith('stream')) md.stream.parse(acc, envStream)
+    else if (sc.type === 'md-original') md.parse(acc, {})
+    else if (sc.type === 'remark') md.parse(acc)
+    else md.parse(acc, envAppend)
+    appendMs += performance.now() - t
         }
       }
       appendMs = appendMs / appRepeats
