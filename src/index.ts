@@ -22,6 +22,7 @@ export { chunkedParse } from './stream/chunked'
 export type { ChunkedOptions } from './stream/chunked'
 export { DebouncedStreamParser, ThrottledStreamParser } from './stream/debounced'
 export type { StreamStats } from './stream/parser'
+export type { RendererEnv, RendererOptions } from './render'
 export { recommendFullChunkStrategy, recommendStreamChunkStrategy } from './support/chunk_recommend'
 
 type QuotesOption = string | [string, string, string, string]
