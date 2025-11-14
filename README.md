@@ -79,12 +79,13 @@ const html = md.render('# Hello World')
 console.log(html)
 ```
 
-If you only need the renderer without the full instance (for tree-shaken builds), you can still import it directly:
+If you initially import core-only and want to attach rendering (to keep bundles smaller when only parse is needed elsewhere), use the provided helper:
 
 ```typescript
-import { render } from 'markdown-it-ts/render'
+import markdownIt, { withRenderer } from 'markdown-it-ts'
 
-const html = render('# Hello World')
+const md = withRenderer(markdownIt())
+const html = md.render('# Hello World')
 console.log(html)
 ```
 
@@ -101,6 +102,19 @@ const md = markdownIt()
 
 const result = md.render('Some markdown content')
 console.log(result)
+```
+
+Subpath exports
+
+For advanced or tree-shaken imports you can target subpaths directly:
+
+```ts
+import { Token } from 'markdown-it-ts/common/token'
+import { withRenderer } from 'markdown-it-ts/plugins/with-renderer'
+import Renderer from 'markdown-it-ts/render/renderer'
+import { StreamBuffer } from 'markdown-it-ts/stream/buffer'
+import { chunkedParse } from 'markdown-it-ts/stream/chunked'
+import { DebouncedStreamParser, ThrottledStreamParser } from 'markdown-it-ts/stream/debounced'
 ```
 
 ### Plugin Authoring (Type-Safe)
@@ -201,6 +215,40 @@ To make sure each change is not slower than the previous run at any tested size/
   - `pnpm run perf:diff`
 
 See `docs/perf-regression.md` for details and CI usage.
+
+## Upstream Test Suites (optional)
+
+This repo can run a subset of the original markdown-it tests and pathological cases. They are disabled by default because they require:
+- A sibling checkout of the upstream `markdown-it` repo (referenced by relative path in tests)
+- Network access for fetching reference scripts
+
+To enable upstream tests locally:
+
+```bash
+# Ensure directory layout like:
+#   ../markdown-it/    # upstream repo with index.mjs and fixtures
+#   ./markdown-it-ts/  # this repo
+
+RUN_ORIGINAL=1 pnpm test
+```
+
+Notes
+- Pathological tests are heavy and use worker threads and network; enable only when needed.
+- CI keeps these disabled by default.
+
+Alternative: set a custom upstream path without sibling layout
+
+```bash
+# Point to a local checkout of markdown-it
+MARKDOWN_IT_DIR=/absolute/path/to/markdown-it RUN_ORIGINAL=1 pnpm test
+```
+
+Convenience scripts
+
+```bash
+pnpm run test:original           # same as RUN_ORIGINAL=1 pnpm test
+pnpm run test:original:network   # also sets RUN_NETWORK=1
+```
 
 ## Parse performance vs markdown-it
 
