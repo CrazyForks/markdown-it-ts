@@ -23,7 +23,7 @@ Output:
   'html_inline'
 ]
 ```
-These are the default renderer rules. For any element that is not explicitly listed in this array its default rule applies. For example the rule `bullet_list_open` is not defined, so when markdown-it tries to parse a list to HTML it defaults to ua generic renderer called `Renderer.prototype.renderToken`.
+These are the default renderer rules. For any element that is not explicitly listed in this array its default rule applies. For example the rule `bullet_list_open` is not defined, so when markdown-it tries to parse a list to HTML it defaults to a generic renderer called `Renderer.prototype.renderToken`.
 
 ## The demo tool
 
