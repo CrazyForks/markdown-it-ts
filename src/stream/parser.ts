@@ -43,6 +43,12 @@ export class StreamParser {
 
   // Only use stream optimization for documents larger than this threshold
   private readonly MIN_SIZE_FOR_OPTIMIZATION = 1000 // characters
+  // Allow caching for most real-world docs; skip only for extremely large payloads
+  private readonly DEFAULT_SKIP_CACHE_CHARS = 600_000
+  private readonly DEFAULT_SKIP_CACHE_LINES = 10_000
+  private readonly MAX_CHUNKS_FOR_FALLBACK = 24
+  // Avoid chunked fallback for very large docs; prefer a single full parse
+  private readonly MAX_CHUNKED_DOC_CHARS = 120_000
 
   // (reserved for future adaptive strategy metrics)
 
@@ -80,8 +86,15 @@ export class StreamParser {
       const auto = md.options?.autoTuneChunks !== false
       const chunkFenceAware = md.options?.streamChunkFenceAware ?? true
 
-      const srcLineCount = countLines(src)
-      const isVeryLargeOneShot = (src.length >= (md.options?.fullChunkThresholdChars ?? 20_000) * 2.5) || (srcLineCount >= (md.options?.fullChunkThresholdLines ?? 400) * 2.5)
+      const skipCacheChars = md.options?.streamSkipCacheAboveChars ?? this.DEFAULT_SKIP_CACHE_CHARS
+      const skipCacheLines = md.options?.streamSkipCacheAboveLines ?? this.DEFAULT_SKIP_CACHE_LINES
+      let srcLineCount: number | undefined
+      const isLargeByChars = src.length >= skipCacheChars
+      let isVeryLargeOneShot = isLargeByChars
+      if (!isVeryLargeOneShot && skipCacheLines !== undefined) {
+        srcLineCount = countLines(src)
+        isVeryLargeOneShot = srcLineCount >= skipCacheLines
+      }
 
       // Heuristic: very large one-shot payloads are likely history restore/display.
       // In such cases, treat as non-stream for performance and memory: do not cache.
@@ -94,9 +107,11 @@ export class StreamParser {
         this.stats.lastMode = 'full'
         return tokens
       }
-      else if (chunkedEnabled) {
+      else if (chunkedEnabled && src.length < this.MAX_CHUNKED_DOC_CHARS) {
         const clamp = (v: number, lo: number, hi: number) => v < lo ? lo : (v > hi ? hi : v)
         // Best-practice discrete mapping (append-focused) when user didn't force sizes
+        if (srcLineCount === undefined)
+          srcLineCount = countLines(src)
         let useChars = chunkAdaptive ? clamp(Math.ceil(src.length / targetChunks), 8000, 32000) : (chunkSizeCharsCfg ?? 10000)
         let useLines = chunkAdaptive ? clamp(Math.ceil(srcLineCount / targetChunks), 150, 350) : (chunkSizeLinesCfg ?? 200)
         if (auto && !chunkSizeCharsCfg && !chunkSizeLinesCfg) {
@@ -123,7 +138,8 @@ export class StreamParser {
         }
         // Avoid chunked fallback for character-by-character growth (no trailing newline)
         const hasTrailingNewline = src.length > 0 && src.charCodeAt(src.length - 1) === 0x0A
-        if ((src.length >= (useChars * 2) || srcLineCount >= (useLines * 2)) && hasTrailingNewline) {
+        const estimatedChunks = Math.ceil(src.length / useChars)
+        if ((src.length >= (useChars * 2) || srcLineCount >= (useLines * 2)) && hasTrailingNewline && estimatedChunks <= this.MAX_CHUNKS_FOR_FALLBACK) {
           const tokens = chunkedParse(md, src, workingEnv, {
             maxChunkChars: useChars,
             maxChunkLines: useLines,
@@ -139,9 +155,8 @@ export class StreamParser {
 
       const state = this.core.parse(src, workingEnv, md)
       const tokens = state.tokens
-      const lineCount = countLines(src)
 
-      this.cache = { src, tokens, env: workingEnv, lineCount }
+      this.cache = { src, tokens, env: workingEnv, lineCount: srcLineCount }
       this.stats.total += 1
       this.stats.fullParses += 1
       this.stats.lastMode = 'full'
@@ -214,8 +229,10 @@ export class StreamParser {
     const auto = md.options?.autoTuneChunks !== false
     const chunkFenceAware = md.options?.streamChunkFenceAware ?? true
 
-    const srcLineCount2 = countLines(src)
-    if (chunkedEnabled) {
+    let srcLineCount2: number | undefined = cached.lineCount
+    if (chunkedEnabled && src.length < this.MAX_CHUNKED_DOC_CHARS) {
+      if (srcLineCount2 === undefined)
+        srcLineCount2 = countLines(src)
       const clamp = (v: number, lo: number, hi: number) => v < lo ? lo : (v > hi ? hi : v)
       let useChars = chunkAdaptive ? clamp(Math.ceil(src.length / targetChunks), 8000, 32000) : (chunkSizeCharsCfg ?? 10000)
       let useLines = chunkAdaptive ? clamp(Math.ceil(srcLineCount2 / targetChunks), 150, 350) : (chunkSizeLinesCfg ?? 200)
@@ -242,7 +259,8 @@ export class StreamParser {
         }
       }
       const hasTrailingNewline2 = src.length > 0 && src.charCodeAt(src.length - 1) === 0x0A
-      if ((src.length >= (useChars * 2) || srcLineCount2 >= (useLines * 2)) && hasTrailingNewline2) {
+      const estimatedChunks = Math.ceil(src.length / useChars)
+      if ((src.length >= (useChars * 2) || srcLineCount2 >= (useLines * 2)) && hasTrailingNewline2 && estimatedChunks <= this.MAX_CHUNKS_FOR_FALLBACK) {
         const tokens = chunkedParse(md, src, fallbackEnv, {
           maxChunkChars: useChars,
           maxChunkLines: useLines,
@@ -258,8 +276,7 @@ export class StreamParser {
 
     const fullState = this.core.parse(src, fallbackEnv, md)
     const nextTokens = fullState.tokens
-    const lineCount = countLines(src)
-    this.cache = { src, tokens: nextTokens, env: fallbackEnv, lineCount }
+    this.cache = { src, tokens: nextTokens, env: fallbackEnv, lineCount: srcLineCount2 }
     this.stats.total += 1
     this.stats.fullParses += 1
     this.stats.lastMode = 'full'

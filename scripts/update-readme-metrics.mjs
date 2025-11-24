@@ -8,7 +8,10 @@ const readmePath = new URL('../README.md', import.meta.url)
 
 function loadJson(p) { return JSON.parse(readFileSync(p, 'utf8')) }
 
-function formatMs(ms) { return `${ms.toFixed(2)}ms` }
+function formatMs(ms) {
+  if (ms < 10) return `${ms.toFixed(4)}ms`
+  return `${ms.toFixed(2)}ms`
+}
 function formatFx(baseline, ts) { return (baseline / ts).toFixed(1) + '×' }
 function formatFrac(baseline, ts) { return (ts / baseline).toFixed(2) + '×' }
 
@@ -88,6 +91,27 @@ function replaceBetween(content, startTag, endTag, newLines) {
   const after = content.slice(endIdx)
   const body = '\n' + newLines.join('\n') + '\n'
   return before + body + after
+}
+
+function buildColdHot(perf) {
+  const rows = perf.coldHot ?? []
+  const grouped = rows.reduce((m, r) => {
+    if (!m.has(r.size)) m.set(r.size, [])
+    m.get(r.size).push(r)
+    return m
+  }, new Map())
+  const lines = []
+  for (const [size, arr] of Array.from(grouped.entries()).sort((a, b) => a[0] - b[0])) {
+    lines.push(`#### ${Number(size).toLocaleString()} chars`)
+    lines.push('')
+    lines.push('| Impl | Cold | Hot |')
+    lines.push('|:--|---:|---:|')
+    for (const row of arr.sort((a, b) => a.label.localeCompare(b.label))) {
+      lines.push(`| ${row.label} | ${formatMs(row.coldMs)} | ${formatMs(row.hotMs)} |`)
+    }
+    lines.push('')
+  }
+  return lines
 }
 
 function main() {

@@ -68,6 +68,8 @@ export class ParserCore {
   public block: ParserBlock
   public inline: ParserInline
   public ruler: CoreRuler
+  private linkifyInstance: ReturnType<typeof LinkifyIt> | null = null
+  private cachedCoreRules: Array<[string, (state: State) => void]> | null = null
 
   constructor() {
     this.block = new ParserBlock()
@@ -88,7 +90,7 @@ export class ParserCore {
       normalizeLink,
       normalizeLinkText,
       validateLink,
-      linkify: new LinkifyIt(),
+      linkify: null as unknown as ReturnType<typeof LinkifyIt>,
     }
   }
 
@@ -97,6 +99,9 @@ export class ParserCore {
       return md
     }
 
+    if (!this.linkifyInstance)
+      this.linkifyInstance = new LinkifyIt()
+
     if (this.fallbackParser.block !== this.block) {
       this.fallbackParser.block = this.block
     }
@@ -104,6 +109,7 @@ export class ParserCore {
       this.fallbackParser.inline = this.inline
     }
     this.fallbackParser.core = this
+    this.fallbackParser.linkify = this.linkifyInstance
 
     return this.fallbackParser
   }
@@ -114,7 +120,11 @@ export class ParserCore {
   }
 
   public process(state: State): void {
-    const rules = this.ruler.getRules('')
+    // Cache the core rule list to avoid re-materializing per parse when unchanged
+    if (!this.cachedCoreRules)
+      this.cachedCoreRules = this.ruler.getRules('')
+
+    const rules = this.cachedCoreRules
     for (let i = 0; i < rules.length; i++) {
       rules[i](state)
     }

@@ -14,10 +14,11 @@ import { chunkedParse } from './stream/chunked'
 import { StreamParser } from './stream/parser'
 
 export { Token } from './common/token'
-
 export { parse, parseInline } from './parse'
+
 export { withRenderer } from './plugins/with-renderer'
 export type { RendererEnv, RendererOptions } from './render'
+export type { RendererOptions } from './render/renderer'
 export { StreamBuffer } from './stream/buffer'
 export { chunkedParse } from './stream/chunked'
 export type { ChunkedOptions } from './stream/chunked'
@@ -48,6 +49,9 @@ export interface MarkdownItOptions {
   // Adaptive chunk sizing for stream chunked fallback (if true, sizes chosen by doc size)
   streamChunkAdaptive?: boolean
   streamChunkTargetChunks?: number
+  // Skip caching for extremely large one-shot payloads (chars or lines)
+  streamSkipCacheAboveChars?: number
+  streamSkipCacheAboveLines?: number
   // Full (non-stream) parse: optional chunked mode
   fullChunkedFallback?: boolean
   fullChunkThresholdChars?: number
@@ -127,6 +131,8 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
     streamChunkFenceAware: true,
     streamChunkAdaptive: true,
     streamChunkTargetChunks: 8,
+    streamSkipCacheAboveChars: 600_000,
+    streamSkipCacheAboveLines: 10_000,
     fullChunkedFallback: false,
     fullChunkThresholdChars: 20_000,
     fullChunkThresholdLines: 400,
@@ -185,26 +191,54 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
   // construct minimal core instance; avoid importing renderer here
   const core = new ParserCore()
 
-  const renderer = new Renderer(opts)
-  const streamParser = new StreamParser(core)
+  let renderer: Renderer | null = null
+  const getRenderer = () => {
+    if (!renderer)
+      renderer = new Renderer(opts)
+    return renderer
+  }
+
+  let streamParser: StreamParser | null = null
+  const getStreamParser = () => {
+    if (!streamParser)
+      streamParser = new StreamParser(core)
+    return streamParser
+  }
+  let linkifyInstance: ReturnType<typeof LinkifyIt> | null = null
+  const getLinkify = () => {
+    if (!linkifyInstance)
+      linkifyInstance = new LinkifyIt()
+    return linkifyInstance
+  }
 
   const md: any = {
     // expose core parts for plugins and rules
     core,
     block: core.block,
     inline: core.inline,
-    linkify: new LinkifyIt(),
-    renderer,
+    get linkify() {
+      const inst = getLinkify()
+      Object.defineProperty(this, 'linkify', { value: inst, writable: true, configurable: true })
+      return inst
+    },
+    get renderer() {
+      const r = getRenderer()
+      Object.defineProperty(this, 'renderer', { value: r, writable: true, configurable: true })
+      return r
+    },
 
     // options & mutators
     options: opts,
     set(newOpts: MarkdownItOptions) {
       this.options = { ...this.options, ...newOpts }
-      this.renderer.set(newOpts as RendererOptions)
+      if (renderer)
+        renderer.set(newOpts as RendererOptions)
       if (typeof newOpts.stream === 'boolean') {
         this.stream.enabled = newOpts.stream
-        streamParser.reset()
-        streamParser.resetStats()
+        if (streamParser) {
+          streamParser.reset()
+          streamParser.resetStats()
+        }
       }
       return this
     },
@@ -276,11 +310,11 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
     },
     render(this: MarkdownIt, src: string, env: Record<string, unknown> = {}) {
       const tokens = this.parse(src, env)
-      return this.renderer.render(tokens, this.options, env)
+      return getRenderer().render(tokens, this.options, env)
     },
     renderInline(this: MarkdownIt, src: string, env: Record<string, unknown> = {}) {
       const tokens = this.parseInline(src, env)
-      return this.renderer.render(tokens, this.options, env)
+      return getRenderer().render(tokens, this.options, env)
     },
 
     // link helpers
@@ -296,11 +330,18 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
     parse(src: string, env: Record<string, unknown> = {}) {
       if (typeof src !== 'string')
         throw new TypeError('Input data should be a String')
+
+      // Fast path: stream disabled and chunked fallback disabled -> direct parse
+      if (!this.stream.enabled && !this.options.fullChunkedFallback) {
+        const state = core.parse(src, env, this)
+        return state.tokens
+      }
+
       // Optional chunked path for full parse (non-stream)
       if (!this.stream.enabled) {
         const chars = src.length
-        const lines = utils.countLines(src)
         if (this.options.fullChunkedFallback) {
+          const lines = utils.countLines(src)
           // Best-practice auto-tuning: choose strategy by size if user didn't force a strategy
           const auto = this.options.autoTuneChunks !== false
           const userForcedChunk = (this.options.fullChunkSizeChars || this.options.fullChunkSizeLines)
@@ -371,19 +412,20 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
         const state = core.parse(src, env ?? {}, md)
         return state.tokens
       }
-      return streamParser.parse(src, env, md)
+      return getStreamParser().parse(src, env, md)
     },
     reset() {
-      streamParser.reset()
+      getStreamParser().reset()
     },
     peek() {
-      return streamParser.peek()
+      return streamParser ? streamParser.peek() : []
     },
     stats() {
-      return streamParser.getStats()
+      return streamParser ? streamParser.getStats() : { total: 0, cacheHits: 0, appendHits: 0, fullParses: 0, resets: 0, chunkedParses: 0, lastMode: 'idle' }
     },
     resetStats() {
-      streamParser.resetStats()
+      if (streamParser)
+        streamParser.resetStats()
     },
   }
 
