@@ -256,11 +256,11 @@ Latest one-shot parse results on this machine (Node.js v23): markdown-it-ts is r
 
 Examples from the latest run (avg over 20 iterations):
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.0001ms vs 0.3870ms → ~3667.4× faster (0.00× time)
-- 20,000 chars: 0.0001ms vs 0.5521ms → ~5095.7× faster (0.00× time)
-- 50,000 chars: 0.0002ms vs 1.1349ms → ~7169.2× faster (0.00× time)
-- 100,000 chars: 0.0003ms vs 2.7125ms → ~8878.9× faster (0.00× time)
-- 200,000 chars: 7.4164ms vs 7.1888ms → ~1.0× faster (1.03× time)
+- 5,000 chars: 0.0001ms vs 0.3879ms → ~3364.3× faster (0.00× time)
+- 20,000 chars: 0.0001ms vs 0.5535ms → ~4285.7× faster (0.00× time)
+- 50,000 chars: 0.0001ms vs 1.2046ms → ~8507.1× faster (0.00× time)
+- 100,000 chars: 0.0003ms vs 2.7883ms → ~9335.9× faster (0.00× time)
+- 200,000 chars: 6.4979ms vs 7.4687ms → ~1.1× faster (0.87× time)
 <!-- perf-auto:one-examples:end -->
 
 - Notes
@@ -274,21 +274,21 @@ We also compare parse-only performance against `remark` (parse-only). The follow
 One-shot parse (oneShotMs) — markdown-it-ts vs remark (lower is better):
 
 <!-- perf-auto:remark-one:start -->
-- 5,000 chars: 0.0001ms vs 4.0719ms → 38584.2× faster
-- 20,000 chars: 0.0001ms vs 14.40ms → 132936.4× faster
-- 50,000 chars: 0.0002ms vs 41.33ms → 261113.7× faster
-- 100,000 chars: 0.0003ms vs 117.95ms → 386095.2× faster
-- 200,000 chars: 7.4164ms vs 223.48ms → 30.1× faster
+- 5,000 chars: 0.0001ms vs 4.0690ms → 35290.8× faster
+- 20,000 chars: 0.0001ms vs 16.32ms → 126373.5× faster
+- 50,000 chars: 0.0001ms vs 43.37ms → 306250.6× faster
+- 100,000 chars: 0.0003ms vs 90.66ms → 303535.4× faster
+- 200,000 chars: 6.4979ms vs 263.18ms → 40.5× faster
 <!-- perf-auto:remark-one:end -->
 
 Append workload (appendWorkloadMs) — markdown-it-ts vs remark:
 
 <!-- perf-auto:remark-append:start -->
-- 5,000 chars: 0.3864ms vs 11.35ms → 29.4× faster
-- 20,000 chars: 0.7998ms vs 50.97ms → 63.7× faster
-- 50,000 chars: 1.8767ms vs 129.91ms → 69.2× faster
-- 100,000 chars: 4.0870ms vs 312.99ms → 76.6× faster
-- 200,000 chars: 14.29ms vs 830.62ms → 58.1× faster
+- 5,000 chars: 0.3929ms vs 11.02ms → 28.1× faster
+- 20,000 chars: 0.7808ms vs 49.27ms → 63.1× faster
+- 50,000 chars: 1.9403ms vs 140.34ms → 72.3× faster
+- 100,000 chars: 3.6803ms vs 371.16ms → 100.9× faster
+- 200,000 chars: 14.46ms vs 723.39ms → 50.0× faster
 <!-- perf-auto:remark-append:end -->
 
 Notes on interpretation
