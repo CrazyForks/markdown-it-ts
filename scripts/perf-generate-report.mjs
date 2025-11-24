@@ -52,10 +52,16 @@ function pickIters(size) {
   return { oneIters: 4, appRepeats: 2 }
 }
 
-function fmt(ms) { return `${ms.toFixed(2)}ms` }
+function fmt(ms) {
+  // Keep very fast results visible instead of rounding to 0.00
+  if (ms < 10) return `${ms.toFixed(4)}ms`
+  return `${ms.toFixed(2)}ms`
+}
 
 const SIZES = [5_000, 20_000, 50_000, 100_000, 200_000]
 const APP_STEPS = 6
+const COLD_HOT_SIZES = [5_000, 20_000, 50_000, 100_000]
+const COLD_HOT_ITERS = 10
 
 function makeScenarios() {
   function s1() { return MarkdownIt({ stream: true, streamChunkedFallback: true, streamChunkSizeChars: 10_000, streamChunkSizeLines: 200, streamChunkFenceAware: true }) }
@@ -157,7 +163,50 @@ function runMatrix() {
   return results
 }
 
-function toMarkdown(results) {
+function measureColdHot() {
+  // Align TS config with the main fast scenario (stream ON, cache ON, chunk ON)
+  const impls = [
+    { id: 'TS', label: 'markdown-it-ts (stream+chunk)', type: 'ts', make: () => MarkdownIt({ stream: true, streamChunkedFallback: true, streamChunkSizeChars: 10_000, streamChunkSizeLines: 200, streamChunkFenceAware: true }) },
+    { id: 'MD', label: 'markdown-it (baseline)', type: 'md-original', make: () => MarkdownItOriginal() },
+    { id: 'RM', label: 'remark (parse only)', type: 'remark', make: () => unified().use(remarkParse) },
+  ]
+
+  const coldHot = []
+
+  for (const size of COLD_HOT_SIZES) {
+    const doc = makeParasByChars(size).join('')
+    for (const impl of impls) {
+      // cold: new instance, single parse, no warmup
+      const coldInst = impl.make()
+      const coldRunner = () => (
+        impl.type === 'remark'
+          ? coldInst.parse(doc)
+          : impl.type === 'md-original'
+            ? coldInst.parse(doc, {})
+            : coldInst.parse(doc, {})
+      )
+      const coldMs = measure(coldRunner, 1).ms
+
+      // hot: new instance, warmup, then average
+      const hotInst = impl.make()
+      const hotRunner = () => (
+        impl.type === 'remark'
+          ? hotInst.parse(doc)
+          : impl.type === 'md-original'
+            ? hotInst.parse(doc, {})
+            : hotInst.parse(doc, {})
+      )
+      measure(hotRunner, 3) // warmup
+      const hotMs = measure(hotRunner, COLD_HOT_ITERS).ms / COLD_HOT_ITERS
+
+      coldHot.push({ size, ...impl, coldMs, hotMs })
+    }
+  }
+
+  return coldHot
+}
+
+function toMarkdown(results, coldHot) {
   const lines = []
   lines.push('# Performance Report (latest run)')
   lines.push('')
@@ -255,6 +304,22 @@ function toMarkdown(results) {
       lines.push(`| ${size} | ${c(r.S1?.chunkInfoOne)} | ${c(r.S3?.chunkInfoOne)} | ${c(r.S4?.chunkInfoOne)} | ${c(r.S1?.chunkInfoAppendLast)} | ${c(r.S3?.chunkInfoAppendLast)} | ${c(r.S4?.chunkInfoAppendLast)} |`)
     }
   }
+  lines.push('')
+  lines.push('## Cold vs Hot (one-shot)')
+  lines.push('')
+  lines.push('Cold-start parses instantiate a new parser and run once with no warmup. Hot parses use a fresh instance with warmup plus averaged runs. 表格按不同文档大小分别列出 markdown-it 与 remark 对照。')
+  lines.push('')
+  const grouped = groupBy(coldHot, 'size')
+  for (const [size, rows] of Array.from(grouped.entries()).sort((a, b) => a[0] - b[0])) {
+    lines.push(`#### ${Number(size).toLocaleString()} chars`)
+    lines.push('')
+    lines.push('| Impl | Cold | Hot |')
+    lines.push('|:--|---:|---:|')
+    for (const row of rows.sort((a, b) => a.label.localeCompare(b.label))) {
+      lines.push(`| ${row.label} | ${fmt(row.coldMs)} | ${fmt(row.hotMs)} |`)
+    }
+    lines.push('')
+  }
   return lines.join('\n')
 }
 
@@ -269,7 +334,8 @@ function groupBy(arr, key) {
 }
 
 const results = runMatrix()
-const md = toMarkdown(results)
+const coldHot = measureColdHot()
+const md = toMarkdown(results, coldHot)
 writeFileSync(new URL('../docs/perf-latest.md', import.meta.url), md)
 
 // Also write a machine-readable JSON for regression checks
@@ -277,6 +343,7 @@ const payload = {
   generatedAt: new Date().toISOString(),
   node: process.version,
   results,
+  coldHot,
 }
 writeFileSync(new URL('../docs/perf-latest.json', import.meta.url), JSON.stringify(payload, null, 2))
 
