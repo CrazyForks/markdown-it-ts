@@ -18,7 +18,6 @@ export { parse, parseInline } from './parse'
 
 export { withRenderer } from './plugins/with-renderer'
 export type { RendererEnv, RendererOptions } from './render'
-export type { RendererOptions } from './render/renderer'
 export { StreamBuffer } from './stream/buffer'
 export { chunkedParse } from './stream/chunked'
 export type { ChunkedOptions } from './stream/chunked'
