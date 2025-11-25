@@ -79,6 +79,18 @@ const html = md.render('# Hello World')
 console.log(html)
 ```
 
+Need async renderer rules (for example, asynchronous syntax highlighting)? Use `renderAsync` which awaits async rule results:
+
+```typescript
+const md = markdownIt()
+const html = await md.renderAsync('# Hello World', {
+  highlight: async (code, lang) => {
+    const highlighted = await someHighlighter(code, lang)
+    return highlighted
+  },
+})
+```
+
 If you initially import core-only and want to attach rendering (to keep bundles smaller when only parse is needed elsewhere), use the provided helper:
 
 ```typescript
@@ -256,11 +268,11 @@ Latest one-shot parse results on this machine (Node.js v23): markdown-it-ts is r
 
 Examples from the latest run (avg over 20 iterations):
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.0001ms vs 0.3879ms → ~3364.3× faster (0.00× time)
-- 20,000 chars: 0.0001ms vs 0.5535ms → ~4285.7× faster (0.00× time)
-- 50,000 chars: 0.0001ms vs 1.2046ms → ~8507.1× faster (0.00× time)
-- 100,000 chars: 0.0003ms vs 2.7883ms → ~9335.9× faster (0.00× time)
-- 200,000 chars: 6.4979ms vs 7.4687ms → ~1.1× faster (0.87× time)
+- 5,000 chars: 0.0001ms vs 0.3860ms → ~4211.1× faster (0.00× time)
+- 20,000 chars: 0.0001ms vs 0.5603ms → ~4803.0× faster (0.00× time)
+- 50,000 chars: 0.0001ms vs 1.1629ms → ~8206.5× faster (0.00× time)
+- 100,000 chars: 0.0002ms vs 3.1506ms → ~16803.2× faster (0.00× time)
+- 200,000 chars: 6.3584ms vs 5.7631ms → ~0.9× faster (1.10× time)
 <!-- perf-auto:one-examples:end -->
 
 - Notes
@@ -274,27 +286,51 @@ We also compare parse-only performance against `remark` (parse-only). The follow
 One-shot parse (oneShotMs) — markdown-it-ts vs remark (lower is better):
 
 <!-- perf-auto:remark-one:start -->
-- 5,000 chars: 0.0001ms vs 4.0690ms → 35290.8× faster
-- 20,000 chars: 0.0001ms vs 16.32ms → 126373.5× faster
-- 50,000 chars: 0.0001ms vs 43.37ms → 306250.6× faster
-- 100,000 chars: 0.0003ms vs 90.66ms → 303535.4× faster
-- 200,000 chars: 6.4979ms vs 263.18ms → 40.5× faster
+- 5,000 chars: 0.0001ms vs 3.8785ms → 42310.9× faster
+- 20,000 chars: 0.0001ms vs 15.23ms → 130564.1× faster
+- 50,000 chars: 0.0001ms vs 44.21ms → 312016.4× faster
+- 100,000 chars: 0.0002ms vs 89.44ms → 477006.9× faster
+- 200,000 chars: 6.3584ms vs 224.87ms → 35.4× faster
 <!-- perf-auto:remark-one:end -->
 
 Append workload (appendWorkloadMs) — markdown-it-ts vs remark:
 
 <!-- perf-auto:remark-append:start -->
-- 5,000 chars: 0.3929ms vs 11.02ms → 28.1× faster
-- 20,000 chars: 0.7808ms vs 49.27ms → 63.1× faster
-- 50,000 chars: 1.9403ms vs 140.34ms → 72.3× faster
-- 100,000 chars: 3.6803ms vs 371.16ms → 100.9× faster
-- 200,000 chars: 14.46ms vs 723.39ms → 50.0× faster
+- 5,000 chars: 0.3859ms vs 9.3609ms → 24.3× faster
+- 20,000 chars: 0.8292ms vs 48.66ms → 58.7× faster
+- 50,000 chars: 1.8071ms vs 133.97ms → 74.1× faster
+- 100,000 chars: 4.2002ms vs 294.42ms → 70.1× faster
+- 200,000 chars: 13.40ms vs 707.51ms → 52.8× faster
 <!-- perf-auto:remark-append:end -->
 
 Notes on interpretation
 - These numbers compare parse-only times produced by the project's perf harness. `remark` workflows often include additional tree transforms/plugins; real-world workloads may differ.
 - Results are machine- and content-dependent. For reproducible comparisons run the local harness and compare `docs/perf-latest.json` or the archived `docs/perf-history/*.json` files.
 - Source: `docs/perf-history/perf-d660c6e.json` (one-shot and appendWorkload values).
+
+## Render performance (markdown → HTML)
+
+We also profile end-to-end `md.render` throughput (parse + render) across markdown-it-ts, upstream markdown-it, and a remark+rehype pipeline. Numbers below come from the latest `pnpm run perf:generate` snapshot.
+
+### vs markdown-it renderer
+
+<!-- perf-auto:render-md:start -->
+- 5,000 chars: 0.1995ms vs 0.1726ms → ~0.9× faster
+- 20,000 chars: 0.6398ms vs 0.5392ms → ~0.8× faster
+- 50,000 chars: 1.5739ms vs 1.5629ms → ~1.0× faster
+- 100,000 chars: 3.9403ms vs 3.3152ms → ~0.8× faster
+- 200,000 chars: 9.1943ms vs 7.4146ms → ~0.8× faster
+<!-- perf-auto:render-md:end -->
+
+### vs remark + rehype renderer
+
+<!-- perf-auto:render-remark:start -->
+- 5,000 chars: 0.1995ms vs 3.6064ms → ~18.1× faster
+- 20,000 chars: 0.6398ms vs 17.30ms → ~27.0× faster
+- 50,000 chars: 1.5739ms vs 43.94ms → ~27.9× faster
+- 100,000 chars: 3.9403ms vs 130.60ms → ~33.1× faster
+- 200,000 chars: 9.1943ms vs 342.99ms → ~37.3× faster
+<!-- perf-auto:render-remark:end -->
 
 Reproduce locally
 

@@ -4,7 +4,10 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 
 const perfPath = new URL('../docs/perf-latest.json', import.meta.url)
-const readmePath = new URL('../README.md', import.meta.url)
+const readmePaths = [
+  new URL('../README.md', import.meta.url),
+  new URL('../README.zh-CN.md', import.meta.url),
+]
 
 function loadJson(p) { return JSON.parse(readFileSync(p, 'utf8')) }
 
@@ -83,6 +86,34 @@ function buildRemarkAppendExamples(bySize, sizes) {
   return lines
 }
 
+function buildRenderVsMarkdownIt(bySize, sizes) {
+  const lines = []
+  for (const size of sizes) {
+    const arr = bySize.get(size)
+    if (!arr) continue
+    const ts = arr.find(r => r.scenario === 'TS_RENDER')
+    const baseline = arr.find(r => r.scenario === 'MD_RENDER')
+    if (!ts || !baseline) continue
+    const l = `- ${size.toLocaleString()} chars: ${formatMs(ts.renderMs)} vs ${formatMs(baseline.renderMs)} → ~${formatFx(baseline.renderMs, ts.renderMs)} faster`
+    lines.push(l)
+  }
+  return lines
+}
+
+function buildRenderVsRemark(bySize, sizes) {
+  const lines = []
+  for (const size of sizes) {
+    const arr = bySize.get(size)
+    if (!arr) continue
+    const ts = arr.find(r => r.scenario === 'TS_RENDER')
+    const remark = arr.find(r => r.scenario === 'RM_RENDER')
+    if (!ts || !remark) continue
+    const l = `- ${size.toLocaleString()} chars: ${formatMs(ts.renderMs)} vs ${formatMs(remark.renderMs)} → ~${formatFx(remark.renderMs, ts.renderMs)} faster`
+    lines.push(l)
+  }
+  return lines
+}
+
 function replaceBetween(content, startTag, endTag, newLines) {
   const startIdx = content.indexOf(startTag)
   const endIdx = content.indexOf(endTag)
@@ -117,17 +148,31 @@ function buildColdHot(perf) {
 function main() {
   const perf = loadJson(perfPath)
   const bySize = getBySize(perf.results)
-
-  const readme = readFileSync(readmePath, 'utf8')
+  const renderBySize = getBySize(perf.renderComparisons || [])
 
   const oneSizes = [5000, 20000, 50000, 100000, 200000]
   const appendSizes = [5000, 20000, 50000, 100000, 200000]
+  const renderSizes = [5000, 20000, 50000, 100000, 200000]
 
-  const oneBlock = buildOneExamples(bySize, oneSizes)
-  const appBlock = buildAppendExamples(bySize, appendSizes)
-  const remarkOneBlock = buildRemarkOneExamples(bySize, oneSizes)
-  const remarkAppBlock = buildRemarkAppendExamples(bySize, appendSizes)
+  const blocks = {
+    one: buildOneExamples(bySize, oneSizes),
+    append: buildAppendExamples(bySize, appendSizes),
+    remarkOne: buildRemarkOneExamples(bySize, oneSizes),
+    remarkAppend: buildRemarkAppendExamples(bySize, appendSizes),
+    renderMd: buildRenderVsMarkdownIt(renderBySize, renderSizes),
+    renderRemark: buildRenderVsRemark(renderBySize, renderSizes),
+  }
 
+  for (const path of readmePaths) {
+    const content = readFileSync(path, 'utf8')
+    const updated = applyBlocks(content, blocks)
+    writeFileSync(path, updated)
+  }
+
+  console.log('README metrics updated in', readmePaths.map(p => p.pathname).join(', '))
+}
+
+function applyBlocks(content, blocks) {
   const startOne = '<!-- perf-auto:one-examples:start -->'
   const endOne = '<!-- perf-auto:one-examples:end -->'
   const startApp = '<!-- perf-auto:append-examples:start -->'
@@ -136,15 +181,19 @@ function main() {
   const endRemarkOne = '<!-- perf-auto:remark-one:end -->'
   const startRemarkApp = '<!-- perf-auto:remark-append:start -->'
   const endRemarkApp = '<!-- perf-auto:remark-append:end -->'
+  const startRenderMd = '<!-- perf-auto:render-md:start -->'
+  const endRenderMd = '<!-- perf-auto:render-md:end -->'
+  const startRenderRemark = '<!-- perf-auto:render-remark:start -->'
+  const endRenderRemark = '<!-- perf-auto:render-remark:end -->'
 
-  let updated = readme
-  updated = replaceBetween(updated, startOne, endOne, oneBlock)
-  updated = replaceBetween(updated, startApp, endApp, appBlock)
-  updated = replaceBetween(updated, startRemarkOne, endRemarkOne, remarkOneBlock)
-  updated = replaceBetween(updated, startRemarkApp, endRemarkApp, remarkAppBlock)
-
-  writeFileSync(readmePath, updated)
-  console.log('README metrics updated from docs/perf-latest.json')
+  let updated = content
+  updated = replaceBetween(updated, startOne, endOne, blocks.one)
+  updated = replaceBetween(updated, startApp, endApp, blocks.append)
+  updated = replaceBetween(updated, startRemarkOne, endRemarkOne, blocks.remarkOne)
+  updated = replaceBetween(updated, startRemarkApp, endRemarkApp, blocks.remarkAppend)
+  updated = replaceBetween(updated, startRenderMd, endRenderMd, blocks.renderMd)
+  updated = replaceBetween(updated, startRenderRemark, endRenderRemark, blocks.renderRemark)
+  return updated
 }
 
 main()

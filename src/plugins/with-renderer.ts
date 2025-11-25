@@ -18,6 +18,11 @@ export function withRenderer(md: MarkdownIt, options?: MarkdownItOptions) {
     return this.renderer.render(tokens, this.options, env)
   }
 
+  md.renderAsync = async function (src: string, env: Record<string, unknown> = {}) {
+    const tokens = this.parse(src, env)
+    return this.renderer.renderAsync(tokens, this.options, env)
+  }
+
   md.renderInline = function (src: string, env: Record<string, unknown> = {}) {
     const tokens = this.parseInline(src, env)
     return this.renderer.render(tokens, this.options, env)

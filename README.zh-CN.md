@@ -20,6 +20,18 @@ const html = md.render('# 你好，世界')
 console.log(html)
 ```
 
+需要异步渲染规则（例如异步语法高亮）？使用 `renderAsync`，它会等待异步规则的结果：
+
+```typescript
+const md = markdownIt()
+const html = await md.renderAsync('# 你好，世界', {
+  highlight: async (code, lang) => {
+    const highlighted = await someHighlighter(code, lang)
+    return highlighted
+  },
+})
+```
+
 ## 性能说明（概览）
 
 - 目标：在一次性解析（one-shot parse）下与上游 markdown-it 保持同级或更优的性能；在增量/编辑场景下提供可选的流式（stream）路径以降低重解析成本。
@@ -41,13 +53,78 @@ pnpm run perf:update-readme
 
 ## 与 markdown-it 的解析性能对比（一次性解析）
 
-最新一次在本机环境（Node.js 版本、CPU 请见 `docs/perf-latest.md`）的对比结果：
+最新一次在本机环境（Node.js 版本、CPU 请见 `docs/perf-latest.md`）的对比结果（取 20 次平均值）：
 
 <!-- perf-auto:one-examples:start -->
-<!-- 运行 `pnpm run perf:generate && pnpm run perf:update-readme` 后，这里会自动更新示例数据 -->
+- 5,000 chars: 0.0001ms vs 0.3860ms → ~4211.1× faster (0.00× time)
+- 20,000 chars: 0.0001ms vs 0.5603ms → ~4803.0× faster (0.00× time)
+- 50,000 chars: 0.0001ms vs 1.1629ms → ~8206.5× faster (0.00× time)
+- 100,000 chars: 0.0002ms vs 3.1506ms → ~16803.2× faster (0.00× time)
+- 200,000 chars: 6.3584ms vs 5.7631ms → ~0.9× faster (1.10× time)
 <!-- perf-auto:one-examples:end -->
 
 注意：数字会因环境与内容不同而变化，建议在本地按上文“本地复现基准”步骤生成你自己的对比报告。若需在 CI 中进行回归检测，可运行：`pnpm run perf:check`。
+
+### 与 remark 的解析性能对比（仅解析）
+
+我们也会比较 `remark`（仅解析）的吞吐表现，以了解在纯解析任务中的差距。
+
+单次解析耗时（越低越好）：
+
+<!-- perf-auto:remark-one:start -->
+- 5,000 chars: 0.0001ms vs 3.8785ms → 42310.9× faster
+- 20,000 chars: 0.0001ms vs 15.23ms → 130564.1× faster
+- 50,000 chars: 0.0001ms vs 44.21ms → 312016.4× faster
+- 100,000 chars: 0.0002ms vs 89.44ms → 477006.9× faster
+- 200,000 chars: 6.3584ms vs 224.87ms → 35.4× faster
+<!-- perf-auto:remark-one:end -->
+
+增量工作负载（append workload）：
+
+<!-- perf-auto:remark-append:start -->
+- 5,000 chars: 0.3859ms vs 9.3609ms → 24.3× faster
+- 20,000 chars: 0.8292ms vs 48.66ms → 58.7× faster
+- 50,000 chars: 1.8071ms vs 133.97ms → 74.1× faster
+- 100,000 chars: 4.2002ms vs 294.42ms → 70.1× faster
+- 200,000 chars: 13.40ms vs 707.51ms → 52.8× faster
+<!-- perf-auto:remark-append:end -->
+
+说明：
+- `remark` 常与其他 rehype/插件配合，真实项目的耗时可能更高；这里仅对其解析吞吐进行对比。
+- 结果依赖于机器配置与内容形态，建议参考 `docs/perf-latest.json` 或 `docs/perf-history/*.json` 上的完整数据。
+
+## 渲染性能（markdown → HTML）
+
+除了纯解析，我们也持续跟踪 markdown-it-ts、原版 markdown-it 以及 remark+rehype 的“解析 + HTML 输出”整体耗时。以下数据来自最近一次 `pnpm run perf:generate`。
+
+### 对比 markdown-it renderer
+
+<!-- perf-auto:render-md:start -->
+- 5,000 chars: 0.1995ms vs 0.1726ms → ~0.9× faster
+- 20,000 chars: 0.6398ms vs 0.5392ms → ~0.8× faster
+- 50,000 chars: 1.5739ms vs 1.5629ms → ~1.0× faster
+- 100,000 chars: 3.9403ms vs 3.3152ms → ~0.8× faster
+- 200,000 chars: 9.1943ms vs 7.4146ms → ~0.8× faster
+<!-- perf-auto:render-md:end -->
+
+### 对比 remark + rehype renderer
+
+<!-- perf-auto:render-remark:start -->
+- 5,000 chars: 0.1995ms vs 3.6064ms → ~18.1× faster
+- 20,000 chars: 0.6398ms vs 17.30ms → ~27.0× faster
+- 50,000 chars: 1.5739ms vs 43.94ms → ~27.9× faster
+- 100,000 chars: 3.9403ms vs 130.60ms → ~33.1× faster
+- 200,000 chars: 9.1943ms vs 342.99ms → ~37.3× faster
+<!-- perf-auto:render-remark:end -->
+
+本地复现：
+
+```bash
+pnpm build
+node scripts/quick-benchmark.mjs
+pnpm run perf:generate
+pnpm run perf:update-readme
+```
 
 ### 回归检查与对比
 

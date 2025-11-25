@@ -3,14 +3,56 @@ import { escapeHtml, unescapeAll } from './utils'
 
 export interface RendererOptions {
   langPrefix?: string
-  highlight?: ((str: string, lang: string, attrs: string) => string) | null
+  highlight?: ((str: string, lang: string, attrs: string) => string | Promise<string>) | null
   xhtmlOut?: boolean
   breaks?: boolean
 }
 
 export type RendererEnv = Record<string, unknown>
 
-export type RendererRule = (tokens: Token[], idx: number, options: RendererOptions, env: RendererEnv, self: Renderer) => string
+export type RendererRuleResult = string | Promise<string>
+export type RendererRule = (tokens: Token[], idx: number, options: RendererOptions, env: RendererEnv, self: Renderer) => RendererRuleResult
+
+const isPromiseLike = (value: unknown): value is Promise<string> =>
+  !!value && (typeof value === 'object' || typeof value === 'function') && typeof (value as any).then === 'function'
+
+const ensureSyncResult = (value: RendererRuleResult, ruleName: string): string => {
+  if (isPromiseLike(value))
+    throw new TypeError(`Renderer rule "${ruleName}" returned a Promise. Use renderAsync() instead.`)
+  return value
+}
+
+const resolveResult = (value: RendererRuleResult): Promise<string> => (isPromiseLike(value) ? value : Promise.resolve(value))
+
+const renderFence = (token: Token, highlighted: string, info: string, langName: string, options: RendererOptions, self: Renderer): string => {
+  if (highlighted.startsWith('<pre'))
+    return `${highlighted}\n`
+
+  if (info) {
+    const classIndex = typeof token.attrIndex === 'function' ? token.attrIndex('class') : -1
+    const tmpAttrs = token.attrs ? token.attrs.map(attr => attr.slice() as [string, string]) : []
+
+    const langClass = `${options.langPrefix || 'language-'}${langName}`
+
+    if (classIndex < 0)
+      tmpAttrs.push(['class', langClass])
+    else
+      tmpAttrs[classIndex][1] += ` ${langClass}`
+
+    const tmpToken = { ...token, attrs: tmpAttrs } as Token
+    return `<pre><code${self.renderAttrs(tmpToken)}>${highlighted}</code></pre>\n`
+  }
+
+  return `<pre><code${self.renderAttrs(token)}>${highlighted}</code></pre>\n`
+}
+
+const DEFAULT_RENDERER_OPTIONS: Required<Pick<RendererOptions, 'langPrefix' | 'xhtmlOut' | 'breaks'>> = {
+  langPrefix: 'language-',
+  xhtmlOut: false,
+  breaks: false,
+}
+
+const hasOwn = Object.prototype.hasOwnProperty
 
 const defaultRules: Record<string, RendererRule> = {
   code_inline(tokens, idx, _options, _env, self) {
@@ -34,27 +76,19 @@ const defaultRules: Record<string, RendererRule> = {
     }
 
     const highlight = options.highlight
-    const highlighted = highlight ? (highlight(token.content, langName, langAttrs) || escapeHtml(token.content)) : escapeHtml(token.content)
+    const fallback = () => escapeHtml(token.content)
 
-    if (highlighted.startsWith('<pre'))
-      return `${highlighted}\n`
+    if (!highlight)
+      return renderFence(token, fallback(), info, langName, options, self)
 
-    if (info) {
-      const classIndex = typeof token.attrIndex === 'function' ? token.attrIndex('class') : -1
-      const tmpAttrs = token.attrs ? token.attrs.map(attr => attr.slice() as [string, string]) : []
+    const highlighted = highlight(token.content, langName, langAttrs)
 
-      const langClass = `${options.langPrefix || 'language-'}${langName}`
-
-      if (classIndex < 0)
-        tmpAttrs.push(['class', langClass])
-      else
-        tmpAttrs[classIndex][1] += ` ${langClass}`
-
-      const tmpToken = { ...token, attrs: tmpAttrs } as Token
-      return `<pre><code${self.renderAttrs(tmpToken)}>${highlighted}</code></pre>\n`
+    if (isPromiseLike(highlighted)) {
+      return highlighted.then(res => renderFence(token, res || fallback(), info, langName, options, self))
     }
 
-    return `<pre><code${self.renderAttrs(token)}>${highlighted}</code></pre>\n`
+    const resolved = highlighted || fallback()
+    return renderFence(token, resolved, info, langName, options, self)
   },
   image(tokens, idx, options, env, self) {
     const token = tokens[idx]
@@ -87,27 +121,22 @@ const defaultRules: Record<string, RendererRule> = {
   },
 }
 
-function mergeOptions(base: RendererOptions, override: RendererOptions): RendererOptions {
-  return {
-    langPrefix: 'language-',
-    xhtmlOut: false,
-    breaks: false,
-    ...base,
-    ...override,
-  }
-}
-
 export class Renderer {
   public readonly rules: Record<string, RendererRule>
   private baseOptions: RendererOptions
+  private normalizedBase: RendererOptions
+  private bufferPool: string[][]
 
   constructor(options: RendererOptions = {}) {
     this.baseOptions = { ...options }
+    this.normalizedBase = this.buildNormalizedBase()
     this.rules = { ...defaultRules }
+    this.bufferPool = []
   }
 
   public set(options: RendererOptions) {
     this.baseOptions = { ...this.baseOptions, ...options }
+    this.normalizedBase = this.buildNormalizedBase()
     return this
   }
 
@@ -115,78 +144,91 @@ export class Renderer {
     if (!Array.isArray(tokens))
       throw new TypeError('render expects token array as first argument')
 
-    const merged = mergeOptions(this.baseOptions, options)
-    let result = ''
+    const merged = this.mergeOptions(options)
+    const chunks = this.acquireBuffer()
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]
       if (token.type === 'inline') {
-        result += this.renderInline(token.children || [], merged, env)
+        this.pushInlineTokens(token.children || [], merged, env, chunks)
         continue
       }
 
       const rule = this.rules[token.type]
       if (rule)
-        result += rule(tokens, i, merged, env, this)
+        chunks.push(ensureSyncResult(rule(tokens, i, merged, env, this), token.type))
       else
-        result += this.renderToken(tokens, i, merged)
+        chunks.push(this.renderToken(tokens, i, merged))
     }
 
-    return result
+    const output = chunks.join('')
+    this.releaseBuffer(chunks)
+    return output
+  }
+
+  public async renderAsync(tokens: Token[], options: RendererOptions = {}, env: RendererEnv = {}): Promise<string> {
+    if (!Array.isArray(tokens))
+      throw new TypeError('render expects token array as first argument')
+
+    const merged = this.mergeOptions(options)
+    const chunks = this.acquireBuffer()
+
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i]
+      if (token.type === 'inline') {
+        await this.pushInlineTokensAsync(token.children || [], merged, env, chunks)
+        continue
+      }
+
+      const rule = this.rules[token.type]
+      if (rule)
+        chunks.push(await resolveResult(rule(tokens, i, merged, env, this)))
+      else
+        chunks.push(this.renderToken(tokens, i, merged))
+    }
+
+    const output = chunks.join('')
+    this.releaseBuffer(chunks)
+    return output
   }
 
   public renderInline(tokens: Token[], options: RendererOptions = {}, env: RendererEnv = {}): string {
-    const merged = mergeOptions(this.baseOptions, options)
-    let result = ''
+    const merged = this.mergeOptions(options)
+    const chunks = this.acquireBuffer()
+    this.pushInlineTokens(tokens, merged, env, chunks)
+    const output = chunks.join('')
+    this.releaseBuffer(chunks)
+    return output
+  }
 
-    for (let i = 0; i < tokens.length; i++) {
-      const token = tokens[i]
-      const rule = this.rules[token.type]
-      if (rule)
-        result += rule(tokens, i, merged, env, this)
-      else
-        result += this.renderToken(tokens, i, merged)
-    }
-
-    return result
+  public async renderInlineAsync(tokens: Token[], options: RendererOptions = {}, env: RendererEnv = {}): Promise<string> {
+    const merged = this.mergeOptions(options)
+    const chunks = this.acquireBuffer()
+    await this.pushInlineTokensAsync(tokens, merged, env, chunks)
+    const output = chunks.join('')
+    this.releaseBuffer(chunks)
+    return output
   }
 
   public renderInlineAsText(tokens: Token[], options: RendererOptions = {}, env: RendererEnv = {}): string {
-    const merged = mergeOptions(this.baseOptions, options)
-    let result = ''
-
-    for (let i = 0; i < tokens.length; i++) {
-      const token = tokens[i]
-      switch (token.type) {
-        case 'text':
-          result += token.content
-          break
-        case 'image':
-          result += this.renderInlineAsText(token.children || [], merged, env)
-          break
-        case 'html_inline':
-        case 'html_block':
-          result += token.content
-          break
-        case 'softbreak':
-        case 'hardbreak':
-          result += '\n'
-          break
-        default:
-          break
-      }
-    }
-
-    return result
+    const merged = this.mergeOptions(options)
+    const chunks = this.acquireBuffer()
+    this.renderInlineAsTextInternal(tokens, merged, env, chunks)
+    const output = chunks.join('')
+    this.releaseBuffer(chunks)
+    return output
   }
 
   public renderAttrs(token: Token): string {
     if (!token.attrs || token.attrs.length === 0)
       return ''
 
-    return token.attrs
-      .map(([name, value]) => ` ${escapeHtml(name)}="${escapeHtml(value)}"`)
-      .join('')
+    let result = ''
+    for (let i = 0; i < token.attrs.length; i++) {
+      const attr = token.attrs[i]
+      result += ` ${escapeHtml(attr[0])}="${escapeHtml(attr[1])}"`
+    }
+    return result
   }
 
   public renderToken(tokens: Token[], idx: number, options: RendererOptions): string {
@@ -222,6 +264,106 @@ export class Renderer {
     result += needLineFeed ? '>\n' : '>'
 
     return result
+  }
+
+  private mergeOptions(overrides?: RendererOptions): RendererOptions {
+    const base = this.normalizedBase
+    if (!overrides)
+      return base
+
+    let merged: RendererOptions | null = null
+    const ensureMerged = () => {
+      if (!merged)
+        merged = { ...base }
+      return merged
+    }
+
+    if (hasOwn.call(overrides, 'highlight') && overrides.highlight !== base.highlight)
+      ensureMerged().highlight = overrides.highlight
+
+    if (hasOwn.call(overrides, 'langPrefix')) {
+      const value = overrides.langPrefix
+      if (value !== base.langPrefix)
+        ensureMerged().langPrefix = value
+    }
+
+    if (hasOwn.call(overrides, 'xhtmlOut')) {
+      const value = overrides.xhtmlOut
+      if (value !== base.xhtmlOut)
+        ensureMerged().xhtmlOut = value
+    }
+
+    if (hasOwn.call(overrides, 'breaks')) {
+      const value = overrides.breaks
+      if (value !== base.breaks)
+        ensureMerged().breaks = value
+    }
+
+    return merged || base
+  }
+
+  private buildNormalizedBase(): RendererOptions {
+    return Object.freeze({ ...DEFAULT_RENDERER_OPTIONS, ...this.baseOptions }) as RendererOptions
+  }
+
+  private pushInlineTokens(tokens: Token[], options: RendererOptions, env: RendererEnv, buffer: string[]) {
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i]
+      const rule = this.rules[token.type]
+      if (rule)
+        buffer.push(ensureSyncResult(rule(tokens, i, options, env, this), token.type))
+      else
+        buffer.push(this.renderToken(tokens, i, options))
+    }
+  }
+
+  private async pushInlineTokensAsync(tokens: Token[], options: RendererOptions, env: RendererEnv, buffer: string[]) {
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i]
+      const rule = this.rules[token.type]
+      if (rule)
+        buffer.push(await resolveResult(rule(tokens, i, options, env, this)))
+      else
+        buffer.push(this.renderToken(tokens, i, options))
+    }
+  }
+
+  private renderInlineAsTextInternal(tokens: Token[], options: RendererOptions, env: RendererEnv, buffer: string[]) {
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i]
+      switch (token.type) {
+        case 'text':
+          buffer.push(token.content)
+          break
+        case 'image':
+          this.renderInlineAsTextInternal(token.children || [], options, env, buffer)
+          break
+        case 'html_inline':
+        case 'html_block':
+          buffer.push(token.content)
+          break
+        case 'softbreak':
+        case 'hardbreak':
+          buffer.push('\n')
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  private acquireBuffer(): string[] {
+    const buf = this.bufferPool.pop()
+    if (buf) {
+      buf.length = 0
+      return buf
+    }
+    return []
+  }
+
+  private releaseBuffer(buffer: string[]) {
+    buffer.length = 0
+    this.bufferPool.push(buffer)
   }
 }
 

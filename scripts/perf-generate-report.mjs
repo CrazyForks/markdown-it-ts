@@ -9,6 +9,8 @@ import MarkdownIt from '../dist/index.js'
 import MarkdownItOriginal from 'markdown-it'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
+import remarkRehype from 'remark-rehype'
+import rehypeStringify from 'rehype-stringify'
 
 function para(n) {
   return `## Section ${n}\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod.\n\n- a\n- b\n- c\n\n\`\`\`js\nconsole.log(${n})\n\`\`\`\n\n`
@@ -206,6 +208,33 @@ function measureColdHot() {
   return coldHot
 }
 
+function measureRenderComparisons() {
+  const impls = [
+    { id: 'TS_RENDER', label: 'markdown-it-ts.render', type: 'ts', make: () => MarkdownIt() },
+    { id: 'MD_RENDER', label: 'markdown-it.render', type: 'md-original', make: () => MarkdownItOriginal() },
+    { id: 'RM_RENDER', label: 'remark+rehype', type: 'remark', make: () => unified().use(remarkParse).use(remarkRehype).use(rehypeStringify) },
+  ]
+
+  const results = []
+  for (const size of SIZES) {
+    const doc = makeParasByChars(size).join('')
+    const { oneIters } = pickIters(size)
+    for (const impl of impls) {
+      const inst = impl.make()
+      const runner = () => (
+        impl.type === 'remark'
+          ? inst.processSync(doc).toString()
+          : inst.render(doc)
+      )
+      runner(); runner(); runner()
+      const { ms } = measure(runner, oneIters)
+      results.push({ size, scenario: impl.id, label: impl.label, renderMs: ms / oneIters })
+    }
+  }
+
+  return results
+}
+
 function toMarkdown(results, coldHot) {
   const lines = []
   lines.push('# Performance Report (latest run)')
@@ -266,6 +295,39 @@ function toMarkdown(results, coldHot) {
   lines.push(`- Append-heavy: ${fmtWins(winsApp)}`)
   lines.push('')
   lines.push('Notes: S2/S3 appendHits should equal 5 when append fast-path triggers (shared env).')
+  lines.push('')
+  lines.push('## Render throughput (markdown → HTML)')
+  lines.push('')
+  lines.push('This measures end-to-end markdown → HTML rendering throughput across markdown-it-ts, upstream markdown-it, and remark+rehype (parse + stringify). Lower is better.')
+  lines.push('')
+  const renderBySize = groupBy(renderComparisons, 'size')
+  lines.push('| Size (chars) | markdown-it-ts.render | markdown-it.render | remark+rehype |')
+  lines.push('|---:|---:|---:|---:|')
+  for (const [size, arr] of Array.from(renderBySize.entries()).sort((a, b) => a[0] - b[0])) {
+    const get = (id) => arr.find(r => r.scenario === id)?.renderMs
+    const ts = get('TS_RENDER')
+    const mdRender = get('MD_RENDER')
+    const remarkRender = get('RM_RENDER')
+    lines.push(`| ${size} | ${ts != null ? fmt(ts) : '-'} | ${mdRender != null ? fmt(mdRender) : '-'} | ${remarkRender != null ? fmt(remarkRender) : '-'} |`)
+  }
+  lines.push('')
+  lines.push('Render vs markdown-it:')
+  for (const [size, arr] of Array.from(renderBySize.entries()).sort((a, b) => a[0] - b[0])) {
+    const ts = arr.find(r => r.scenario === 'TS_RENDER')
+    const mdRender = arr.find(r => r.scenario === 'MD_RENDER')
+    if (!ts || !mdRender) continue
+    const ratio = mdRender.renderMs / ts.renderMs
+    lines.push(`- ${Number(size).toLocaleString()} chars: ${fmt(ts.renderMs)} vs ${fmt(mdRender.renderMs)} → ${ratio.toFixed(2)}× faster`)
+  }
+  lines.push('')
+  lines.push('Render vs remark+rehype:')
+  for (const [size, arr] of Array.from(renderBySize.entries()).sort((a, b) => a[0] - b[0])) {
+    const ts = arr.find(r => r.scenario === 'TS_RENDER')
+    const remarkRender = arr.find(r => r.scenario === 'RM_RENDER')
+    if (!ts || !remarkRender) continue
+    const ratio = remarkRender.renderMs / ts.renderMs
+    lines.push(`- ${Number(size).toLocaleString()} chars: ${fmt(ts.renderMs)} vs ${fmt(remarkRender.renderMs)} → ${ratio.toFixed(2)}× faster`)
+  }
   lines.push('')
   // Best-of TS vs baseline summary
   lines.push('## Best-of markdown-it-ts vs markdown-it (baseline)')
@@ -335,7 +397,8 @@ function groupBy(arr, key) {
 
 const results = runMatrix()
 const coldHot = measureColdHot()
-const md = toMarkdown(results, coldHot)
+const renderComparisons = measureRenderComparisons()
+const md = toMarkdown(results, coldHot, renderComparisons)
 writeFileSync(new URL('../docs/perf-latest.md', import.meta.url), md)
 
 // Also write a machine-readable JSON for regression checks
@@ -344,6 +407,7 @@ const payload = {
   node: process.version,
   results,
   coldHot,
+  renderComparisons,
 }
 writeFileSync(new URL('../docs/perf-latest.json', import.meta.url), JSON.stringify(payload, null, 2))
 

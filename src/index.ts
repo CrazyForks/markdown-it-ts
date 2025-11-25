@@ -35,7 +35,7 @@ export interface MarkdownItOptions {
   linkify?: boolean
   typographer?: boolean
   quotes?: QuotesOption
-  highlight?: ((str: string, lang?: string, attrs?: string) => string) | null
+  highlight?: ((str: string, lang?: string, attrs?: string) => string | Promise<string>) | null
   maxNesting?: number
   stream?: boolean
   // Stream optimization knobs
@@ -96,6 +96,7 @@ export interface MarkdownIt {
   disable: (list: string | string[], ignoreInvalid?: boolean) => this
   use: (plugin: MarkdownItPlugin, ...params: unknown[]) => this
   render: (src: string, env?: Record<string, unknown>) => string
+  renderAsync: (src: string, env?: Record<string, unknown>) => Promise<string>
   renderInline: (src: string, env?: Record<string, unknown>) => string
   validateLink: typeof validateLink
   normalizeLink: typeof normalizeLink
@@ -310,6 +311,10 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
     render(this: MarkdownIt, src: string, env: Record<string, unknown> = {}) {
       const tokens = this.parse(src, env)
       return getRenderer().render(tokens, this.options, env)
+    },
+    async renderAsync(this: MarkdownIt, src: string, env: Record<string, unknown> = {}) {
+      const tokens = this.parse(src, env)
+      return getRenderer().renderAsync(tokens, this.options, env)
     },
     renderInline(this: MarkdownIt, src: string, env: Record<string, unknown> = {}) {
       const tokens = this.parseInline(src, env)
