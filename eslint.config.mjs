@@ -4,8 +4,12 @@ export default simon(
   {
     ignores: [
       '**/**/*.d.ts',
+      // Don't lint Markdown files — they are docs, not source
+      '**/*.md',
       'test',
       'benchmark',
+      // demo templates use a lot of non-standard code and globals
+      'support/demo_template/**',
       'scripts',
       'docs',
     ],
@@ -24,7 +28,8 @@ export default simon(
       'antfu/no-import-dist': 'off',
       'vue/require-toggle-inside-transition': 'off',
     },
-    ignores: ['**/fixtures', 'test', 'docs'],
+    // keep other ignores in sync
+    ignores: ['**/fixtures', 'test', 'docs', '**/*.md', 'support/demo_template/**'],
   },
   {},
 )

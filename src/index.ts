@@ -40,6 +40,10 @@ export interface MarkdownItOptions {
   stream?: boolean
   // Stream optimization knobs
   streamOptimizationMinSize?: number // characters threshold to start stream append optimizations
+  // Context-parse strategy options (controls when to attempt parsing with context)
+  streamContextParseStrategy?: 'chars' | 'lines' | 'constructs'
+  streamContextParseMinChars?: number
+  streamContextParseMinLines?: number
   // Chunked fallback when stream falls back to full parse for very large docs
   streamChunkedFallback?: boolean
   streamChunkSizeChars?: number

@@ -1,0 +1,29 @@
+name: Deploy docs to Netlify
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-docs:
+    if: ${{ secrets.NETLIFY_AUTH_TOKEN && secrets.NETLIFY_SITE_ID_DOCS }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          node-version: '18'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build docs
+        run: pnpm run doc
+
+      - name: Publish to Netlify (docs)
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID_DOCS: ${{ secrets.NETLIFY_SITE_ID_DOCS }}
+        run: npx netlify deploy --prod --dir=apidoc --site "$NETLIFY_SITE_ID_DOCS" --auth "$NETLIFY_AUTH_TOKEN"

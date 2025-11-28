@@ -13,10 +13,11 @@ export type RendererEnv = Record<string, unknown>
 export type RendererRuleResult = string | Promise<string>
 export type RendererRule = (tokens: Token[], idx: number, options: RendererOptions, env: RendererEnv, self: Renderer) => RendererRuleResult
 
-const isPromiseLike = (value: unknown): value is Promise<string> =>
-  !!value && (typeof value === 'object' || typeof value === 'function') && typeof (value as any).then === 'function'
+function isPromiseLike(value: unknown): value is Promise<string> {
+  return !!value && (typeof value === 'object' || typeof value === 'function') && typeof (value as any).then === 'function'
+}
 
-const ensureSyncResult = (value: RendererRuleResult, ruleName: string): string => {
+function ensureSyncResult(value: RendererRuleResult, ruleName: string): string {
   if (isPromiseLike(value))
     throw new TypeError(`Renderer rule "${ruleName}" returned a Promise. Use renderAsync() instead.`)
   return value
@@ -24,7 +25,7 @@ const ensureSyncResult = (value: RendererRuleResult, ruleName: string): string =
 
 const resolveResult = (value: RendererRuleResult): Promise<string> => (isPromiseLike(value) ? value : Promise.resolve(value))
 
-const renderFence = (token: Token, highlighted: string, info: string, langName: string, options: RendererOptions, self: Renderer): string => {
+function renderFence(token: Token, highlighted: string, info: string, langName: string, options: RendererOptions, self: Renderer): string {
   if (highlighted.startsWith('<pre'))
     return `${highlighted}\n`
 

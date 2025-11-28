@@ -116,6 +116,96 @@ const result = md.render('Some markdown content')
 console.log(result)
 ```
 
+## Demo
+
+Build the demo site into ./demo and open it in your browser.
+
+Note: the demo build uses the current project's published build artifact (the files in `dist/`). The demo script runs `npm run build` before bundling, so the demo reflects the current repo source.
+
+This ensures `demo/markdown-it.js` is produced from the most recent `dist/index.js` output.
+
+### Generating API docs
+
+You can generate API documentation into `./apidoc` using the built-in script. The script will attempt to use `pnpm dlx` or `npx` if available, otherwise it uses the locally-installed `ndoc` from `node_modules`.
+
+```bash
+# build and generate docs
+npm run build
+npm run doc
+
+# open generated docs
+open apidoc/index.html  # macOS
+xdg-open apidoc/index.html  # Linux
+```
+
+## Continuous Integration
+
+This repository includes a GitHub Actions workflow that runs on push and pull requests to `main`. The CI job verifies the TypeScript build, linting, API docs generation and demo build to help catch regressions early.
+
+Files to inspect: `.github/workflows/ci-docs.yml`
+
+## Deploying to Netlify
+
+You can deploy both the generated API docs (`apidoc/`) and the demo site (`demo/`) to Netlify. There are two supported workflows:
+
+1) Manual / CLI deploy (local)
+
+  - Create two Netlify sites (one for docs and one for demo), or use two separate site IDs under the same account.
+  - Install `netlify-cli` locally or use the helper scripts included in package.json.
+
+  Deploy docs locally:
+  ```bash
+  # set environment variables first
+  export NETLIFY_AUTH_TOKEN=your_token_here
+  export NETLIFY_SITE_ID_DOCS=your_docs_site_id
+  pnpm run netlify:deploy:docs
+  ```
+
+  Deploy demo locally:
+  ```bash
+  export NETLIFY_AUTH_TOKEN=your_token_here
+  export NETLIFY_SITE_ID_DEMO=your_demo_site_id
+  pnpm run netlify:deploy:demo
+  ```
+
+2) CI-driven deploy (recommended)
+
+  The repo contains two GitHub Actions workflows, one for docs and one for demo. Each workflow will only run if you add the required secrets to the repository:
+
+  - NETLIFY_AUTH_TOKEN — a Netlify Personal Access Token with deploy permissions
+  - NETLIFY_SITE_ID_DOCS — the Site ID for the docs site
+  - NETLIFY_SITE_ID_DEMO — the Site ID for the demo site
+
+  Add these as GitHub Secrets for the repository (Settings → Secrets and variables → Actions). When pushed to `main`, the workflows will run and deploy to the corresponding Netlify site.
+
+Files to inspect: `.github/workflows/deploy-netlify-docs.yml` and `.github/workflows/deploy-netlify-demo.yml`
+
+Automatic CI deploy: when you push to `main`, the CI workflow will build the project, generate docs, and build the demo. After a successful build the workflow attempts to deploy both `apidoc/` and `demo/` to Netlify automatically — but only if the corresponding GitHub Actions secrets are set:
+
+- `NETLIFY_AUTH_TOKEN` — Netlify Personal Access Token
+- `NETLIFY_SITE_ID_DOCS` — Netlify Site ID for the docs site
+- `NETLIFY_SITE_ID_DEMO` — Netlify Site ID for the demo site
+
+If those secrets exist, the CI will publish both sites. If not, the CI will skip publishing and still report build/lint/docs/demo status.
+
+```bash
+# build demo and open ./demo/index.html (macOS / Linux / Windows supported)
+npm run gh-demo
+```
+
+If you only want to build the demo (skip publishing) you can run:
+
+```bash
+npm run demo
+```
+
+To publish the demo automatically set GH_PAGES_REPO to your target repo (you must have push access):
+
+```bash
+export GH_PAGES_REPO='git@github.com:youruser/markdown-it.github.io.git'
+npm run gh-demo
+```
+
 Subpath exports
 
 For advanced or tree-shaken imports you can target subpaths directly:
@@ -256,7 +346,6 @@ The table below shows a compact, side-by-side comparison for a 20,000-char docum
 
 Notes: bolded values indicate the best (lowest) time in that column for this document size.
 
-
 Reproduce the measurements:
 
 ```bash
@@ -336,11 +425,11 @@ Latest one-shot parse results on this machine (Node.js v23): markdown-it-ts is r
 
 Examples from the latest run (avg over 20 iterations):
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.0002ms vs 0.4191ms → ~2066.7× faster (0.00× time)
-- 20,000 chars: 0.0002ms vs 0.8540ms → ~4098.7× faster (0.00× time)
-- 50,000 chars: 0.0002ms vs 2.0386ms → ~8894.6× faster (0.00× time)
-- 100,000 chars: 0.0005ms vs 4.9358ms → ~9351.0× faster (0.00× time)
-- 200,000 chars: 12.05ms vs 12.44ms → ~1.0× faster (0.97× time)
+- 5,000 chars: 0.0002ms vs 0.5357ms → ~2857.3× faster (0.00× time)
+- 20,000 chars: 0.0002ms vs 0.9343ms → ~5339.0× faster (0.00× time)
+- 50,000 chars: 0.0005ms vs 2.9890ms → ~6348.9× faster (0.00× time)
+- 100,000 chars: 0.0005ms vs 6.1295ms → ~12791.9× faster (0.00× time)
+- 200,000 chars: 11.70ms vs 10.14ms → ~0.9× faster (1.15× time)
 <!-- perf-auto:one-examples:end -->
 
 - Notes
@@ -354,21 +443,21 @@ We also compare parse-only performance against `remark` (parse-only). The follow
 One-shot parse (oneShotMs) — markdown-it-ts vs remark (lower is better):
 
 <!-- perf-auto:remark-one:start -->
-- 5,000 chars: 0.0002ms vs 5.9586ms → 29381.5× faster
-- 20,000 chars: 0.0002ms vs 28.05ms → 134622.7× faster
-- 50,000 chars: 0.0002ms vs 76.53ms → 333920.7× faster
-- 100,000 chars: 0.0005ms vs 167.90ms → 318088.1× faster
-- 200,000 chars: 12.05ms vs 566.10ms → 47.0× faster
+- 5,000 chars: 0.0002ms vs 7.0033ms → 37350.8× faster
+- 20,000 chars: 0.0002ms vs 28.27ms → 161549.0× faster
+- 50,000 chars: 0.0005ms vs 76.84ms → 163208.9× faster
+- 100,000 chars: 0.0005ms vs 200.44ms → 418308.6× faster
+- 200,000 chars: 11.70ms vs 401.53ms → 34.3× faster
 <!-- perf-auto:remark-one:end -->
 
 Append workload (appendWorkloadMs) — markdown-it-ts vs remark:
 
 <!-- perf-auto:remark-append:start -->
-- 5,000 chars: 0.3748ms vs 18.25ms → 48.7× faster
-- 20,000 chars: 1.3678ms vs 86.08ms → 62.9× faster
-- 50,000 chars: 3.7555ms vs 244.93ms → 65.2× faster
-- 100,000 chars: 7.4134ms vs 552.54ms → 74.5× faster
-- 200,000 chars: 26.39ms vs 1316.11ms → 49.9× faster
+- 5,000 chars: 0.4102ms vs 21.20ms → 51.7× faster
+- 20,000 chars: 1.4922ms vs 94.57ms → 63.4× faster
+- 50,000 chars: 5.3295ms vs 244.34ms → 45.8× faster
+- 100,000 chars: 7.9940ms vs 588.57ms → 73.6× faster
+- 200,000 chars: 26.66ms vs 1266.35ms → 47.5× faster
 <!-- perf-auto:remark-append:end -->
 
 Notes on interpretation
@@ -383,21 +472,21 @@ We also profile end-to-end `md.render` throughput (parse + render) across markdo
 ### vs markdown-it renderer
 
 <!-- perf-auto:render-md:start -->
-- 5,000 chars: 0.3574ms vs 0.2641ms → ~0.7× faster
-- 20,000 chars: 1.2340ms vs 0.9844ms → ~0.8× faster
-- 50,000 chars: 3.0913ms vs 2.4276ms → ~0.8× faster
-- 100,000 chars: 8.3501ms vs 5.9070ms → ~0.7× faster
-- 200,000 chars: 15.95ms vs 15.57ms → ~1.0× faster
+- 5,000 chars: 0.3276ms vs 0.2595ms → ~0.8× faster
+- 20,000 chars: 1.2303ms vs 0.9931ms → ~0.8× faster
+- 50,000 chars: 3.1365ms vs 2.4237ms → ~0.8× faster
+- 100,000 chars: 7.3150ms vs 5.7146ms → ~0.8× faster
+- 200,000 chars: 17.42ms vs 13.23ms → ~0.8× faster
 <!-- perf-auto:render-md:end -->
 
 ### vs remark + rehype renderer
 
 <!-- perf-auto:render-remark:start -->
-- 5,000 chars: 0.3574ms vs 6.5419ms → ~18.3× faster
-- 20,000 chars: 1.2340ms vs 29.56ms → ~24.0× faster
-- 50,000 chars: 3.0913ms vs 84.73ms → ~27.4× faster
-- 100,000 chars: 8.3501ms vs 191.70ms → ~23.0× faster
-- 200,000 chars: 15.95ms vs 456.14ms → ~28.6× faster
+- 5,000 chars: 0.3276ms vs 5.7914ms → ~17.7× faster
+- 20,000 chars: 1.2303ms vs 28.93ms → ~23.5× faster
+- 50,000 chars: 3.1365ms vs 79.81ms → ~25.4× faster
+- 100,000 chars: 7.3150ms vs 180.24ms → ~24.6× faster
+- 200,000 chars: 17.42ms vs 441.68ms → ~25.4× faster
 <!-- perf-auto:render-remark:end -->
 
 Reproduce locally

@@ -153,6 +153,7 @@ export class StreamParser {
         }
       }
 
+      // initial parse
       const state = this.core.parse(src, workingEnv, md)
       const tokens = state.tokens
 
@@ -188,8 +189,11 @@ export class StreamParser {
       return nextTokens
     }
 
+    // inspect appended detection
     const appended = this.getAppendedSegment(cached.src, src)
+    // debug info suppressed
     if (appended) {
+      // (no-op) appended preview suppressed
       // Fast-path: reuse existing tokens when new input is a clean append that starts on a fresh line.
       // This is conservative; edits requiring cross-block context still fall back to a full parse below.
       // Special-case: a single trailing newline closes the last line but doesn't
@@ -208,15 +212,54 @@ export class StreamParser {
       // small to limit reparse cost but large enough to cover common
       // cross-line constructs.
       let ctxLines = 3
-      if (appended.length > 5000) ctxLines = 8
-      else if (appended.length > 1000) ctxLines = 6
-      else if (appended.length > 200) ctxLines = 4
+      if (appended.length > 5000)
+        ctxLines = 8
+      else if (appended.length > 1000)
+        ctxLines = 6
+      else if (appended.length > 200)
+        ctxLines = 4
 
       // Ensure we don't request more context lines than we have cached
       ctxLines = Math.min(ctxLines, cachedLineCount)
 
       let appendedState = null
-      if (ctxLines > 0) {
+      // Context-parse strategy configuration (chars | lines | constructs)
+      const ctxStrategy = (md.options?.streamContextParseStrategy as string) ?? 'chars'
+      const CONTEXT_PARSE_MIN_CHARS = md.options?.streamContextParseMinChars ?? 200
+      const CONTEXT_PARSE_MIN_LINES = md.options?.streamContextParseMinLines ?? 2
+
+      function appendedHasBlockConstructs(s: string): boolean {
+        // Heuristic: common block-level starters that may require context
+        // - ATX headings (#)
+        // - blockquote (>)
+        // - lists (-, *, +, or numbered)
+        // - fenced code (``` or ~~~)
+        // - indented code (4+ spaces)
+        // Use multiline regex to detect these markers at line starts.
+        return /(?:^|\n)\s{0,3}(?:#{1,6}\s|>\s|[-*+]\s|\d+\.\s|```|~~~| {4,})/.test(s)
+      }
+
+      // Decide whether to attempt a context-aware parse based on strategy
+      let shouldAttemptContext = false
+      switch (ctxStrategy) {
+        case 'lines': {
+          const appendedLines = countLines(appended)
+          shouldAttemptContext = appendedLines >= CONTEXT_PARSE_MIN_LINES
+          break
+        }
+        case 'constructs': {
+          const appendedLines = countLines(appended)
+          shouldAttemptContext = appendedHasBlockConstructs(appended) || appendedLines >= CONTEXT_PARSE_MIN_LINES || appended.length >= CONTEXT_PARSE_MIN_CHARS
+          break
+        }
+        case 'chars':
+        default:
+          shouldAttemptContext = appended.length >= CONTEXT_PARSE_MIN_CHARS
+      }
+
+      // Only attempt context-aware parse when we have a positive ctx window
+      // and the strategy indicates it's worthwhile.
+      if (ctxLines > 0 && shouldAttemptContext) {
         // Build a small context string: last N lines of cached.src + appended
         const cachedLines = cached.src.split('\n')
         const ctxStart = Math.max(0, cachedLines.length - ctxLines)
@@ -231,20 +274,27 @@ export class StreamParser {
           // by parsing `ctxSrc` will have `.map` values where lines starting
           // at >= ctxLines belong to appended part (since contextPrefix has
           // exactly ctxLines lines).
-          const idx = ctxTokens.findIndex(t => t.map && t.map[0] >= ctxLines)
+          // Find the first token that ends at or after the context window.
+          // Using map[1] >= ctxLines ensures tokens that start earlier but
+          // extend into the appended region are treated as part of the append.
+          const idx = ctxTokens.findIndex(t => t.map && typeof t.map[1] === 'number' && t.map[1] >= ctxLines)
           if (idx !== -1) {
             // Extract appended tokens and shift their line maps so they align
             // with the global cached line indices.
             const appendedTokens = ctxTokens.slice(idx)
             const shiftBy = cachedLineCount - ctxLines
-            if (shiftBy !== 0) this.shiftTokenLines(appendedTokens, shiftBy)
+            if (shiftBy !== 0)
+              this.shiftTokenLines(appendedTokens, shiftBy)
             appendedState = { tokens: appendedTokens }
           }
         }
-        catch (e) {
+        catch {
           // If context parse fails for any reason, we'll fall back below.
           appendedState = null
         }
+      }
+      else {
+        appendedState = null
       }
 
       // Fallback: if context-aware extraction did not yield appended tokens,
@@ -252,7 +302,8 @@ export class StreamParser {
       if (!appendedState) {
         const simpleState = this.core.parse(appended, cached.env, md)
         const lineOffset = cachedLineCount
-        if (lineOffset > 0) this.shiftTokenLines(simpleState.tokens, lineOffset)
+        if (lineOffset > 0)
+          this.shiftTokenLines(simpleState.tokens, lineOffset)
         appendedState = simpleState
       }
 
@@ -276,7 +327,7 @@ export class StreamParser {
             appendedState.tokens.shift()
           }
         }
-        catch (e) {
+        catch {
           // Be conservative on error: fall back to simple push below
         }
         // NOTE: previously had an aggressive paragraph-merge heuristic here that
@@ -287,8 +338,53 @@ export class StreamParser {
       }
 
       // Append remaining tokens into cache
-      if (appendedState.tokens.length > 0)
-        cached.tokens.push(...appendedState.tokens)
+      if (appendedState.tokens.length > 0) {
+        // Avoid duplicating tokens that are already present at the end of the cache.
+        // If the beginning of appendedState.tokens matches a trailing sequence in
+        // cached.tokens, drop the matching prefix from appendedState.tokens.
+        const cachedTail = cached.tokens
+        const a = appendedState.tokens
+        const maxCheck = Math.min(cachedTail.length, a.length)
+
+        function tokenEquals(x: any, y: any) {
+          if (!x || !y)
+            return false
+          if (x.type !== y.type)
+            return false
+          if (x.type === 'inline')
+            return (x.content || '') === (y.content || '')
+          // For other tokens, type equality is acceptable for duplication detection
+          return true
+        }
+
+        // Debug output suppressed in CI
+        let dup = 0
+        // Try longest prefix match
+        for (let n = maxCheck; n > 0; n--) {
+          let ok = true
+          for (let i = 0; i < n; i++) {
+            const tailToken = cachedTail[cachedTail.length - n + i]
+            const prefToken = a[i]
+            if (!tokenEquals(tailToken, prefToken)) {
+              ok = false
+              break
+            }
+          }
+          if (ok) {
+            dup = n
+            break
+          }
+        }
+
+        if (dup > 0) {
+          // Drop the duplicated prefix from appended tokens
+          a.splice(0, dup)
+        }
+
+        if (a.length > 0) {
+          cached.tokens.push(...a)
+        }
+      }
 
       // Update cache with new src and line count
       cached.src = src
@@ -356,6 +452,7 @@ export class StreamParser {
       }
     }
 
+    // full fallback parse
     const fullState = this.core.parse(src, fallbackEnv, md)
     const nextTokens = fullState.tokens
     this.cache = { src, tokens: nextTokens, env: fallbackEnv, lineCount: srcLineCount2 }

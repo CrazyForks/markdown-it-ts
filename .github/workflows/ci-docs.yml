@@ -1,0 +1,57 @@
+name: CI — docs & demo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-docs-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: pnpm/action-setup@v2
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (tsdown)
+        run: pnpm run build
+
+      - name: Lint (eslint)
+        run: pnpm run lint
+
+      - name: Generate API docs (ndoc)
+        run: pnpm run doc
+
+      - name: Build demo (no publish)
+        run: pnpm run demo
+
+      - name: Publish to Netlify (docs) — conditional
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID_DOCS: ${{ secrets.NETLIFY_SITE_ID_DOCS }}
+        run: |
+          if [ -n "$NETLIFY_AUTH_TOKEN" ] && [ -n "$NETLIFY_SITE_ID_DOCS" ]; then
+            echo "Publishing apidoc to Netlify site $NETLIFY_SITE_ID_DOCS"
+            npx netlify deploy --prod --dir=apidoc --site "$NETLIFY_SITE_ID_DOCS" --auth "$NETLIFY_AUTH_TOKEN"
+          else
+            echo "NETLIFY_SITE_ID_DOCS or NETLIFY_AUTH_TOKEN not set — skipping docs publish"
+          fi
+
+      - name: Publish to Netlify (demo) — conditional
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID_DEMO: ${{ secrets.NETLIFY_SITE_ID_DEMO }}
+        run: |
+          if [ -n "$NETLIFY_AUTH_TOKEN" ] && [ -n "$NETLIFY_SITE_ID_DEMO" ]; then
+            echo "Publishing demo to Netlify site $NETLIFY_SITE_ID_DEMO"
+            npx netlify deploy --prod --dir=demo --site "$NETLIFY_SITE_ID_DEMO" --auth "$NETLIFY_AUTH_TOKEN"
+          else
+            echo "NETLIFY_SITE_ID_DEMO or NETLIFY_AUTH_TOKEN not set — skipping demo publish"
+          fi
