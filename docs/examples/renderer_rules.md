@@ -3,7 +3,7 @@
 Rules on how to translate markdown content to HTML elements are stored in `renderer.rules`:
 
 ```js
-const MarkdownIt = require('markdown-it')
+const MarkdownIt = require()
 
 const md = new MarkdownIt()
 
@@ -69,7 +69,7 @@ Create a rule to add the CSS class "lorem_ipsum" to every <ul>
 
 Rules are functions that accept a number of parameters:
 ```js
-const MarkdownIt = require('markdown-it')
+const MarkdownIt = require()
 
 const md = new MarkdownIt()
 
@@ -88,7 +88,7 @@ We assign the new rule to the key that corresponds to the html tag we want to mo
 It is good practice however to save the default renderer for your element and only make minimal changes to the rules in place, instead of reinventing the wheel:
 
 ```js
-const MarkdownIt = require('markdown-it')
+const MarkdownIt = require()
 
 const md = new MarkdownIt()
 
@@ -108,7 +108,7 @@ CSS classes are attributes on HTML elements. If we think back to the object repr
 Looking at [the API documention for Token objects](https://markdown-it.github.io/markdown-it/#Token.attrJoin) we find the `attrJoin` method. This method allows us to join an existing attributes value with a new value or create the attribute if it doesn't exist yet. Simply pushing the value (for example with `token.attr.push(["key", "value"]`) would overwrite any previous change:
 
 ```js
-const MarkdownIt = require('markdown-it')
+const MarkdownIt = require()
 
 const md = new MarkdownIt()
 
@@ -124,7 +124,7 @@ md.renderer.rules.bullet_list_open = function (tokens, idx, options, env, self) 
 ```
 Let's test the finished rule:
 ```js
-const MarkdownIt = require('markdown-it')
+const MarkdownIt = require()
 
 const md = new MarkdownIt()
 
@@ -183,7 +183,7 @@ list_item_close
 Now use this information to add the new rules:
 
 ```js
-const MarkdownIt = require('markdown-it')
+const MarkdownIt = require()
 
 const md = new MarkdownIt()
 
@@ -203,7 +203,7 @@ md.renderer.rules.list_item_close = function (tokens, idx, options, env, self) {
 Testing our modification:
 
 ```js
-const MarkdownIt = require('markdown-it')
+const MarkdownIt = require()
 
 const md = new MarkdownIt()
 
@@ -233,7 +233,7 @@ Output:
 
 Of course using string manipulation might get really messy for bigger changes. So consider using `markdown-it`s Token class instead:
 ```js
-const MarkdownIt = require('markdown-it')
+const MarkdownIt = require()
 const Token = require('markdown-it/lib/token')
 
 const md = new MarkdownIt()
