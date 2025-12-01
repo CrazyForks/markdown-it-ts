@@ -2,6 +2,8 @@
 
 English | [简体中文](./README.zh-CN.md)
 
+[Compatibility report: `docs/COMPATIBILITY_REPORT.md`](./docs/COMPATIBILITY_REPORT.md)
+
 A TypeScript migration of [markdown-it](https://github.com/markdown-it/markdown-it) with modular architecture for tree-shaking and separate parse/render imports.
 
 ## 🚀 Migration Status: 100% Complete
