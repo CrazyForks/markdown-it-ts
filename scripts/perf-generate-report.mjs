@@ -7,6 +7,7 @@ import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import MarkdownIt from '../dist/index.js'
 import MarkdownItOriginal from 'markdown-it'
+import { createMarkdownExit as createMarkdownExitFactory } from 'markdown-exit'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkRehype from 'remark-rehype'
@@ -87,6 +88,7 @@ function makeScenarios() {
     { id: 'S4', label: 'stream OFF, chunk ON', make: s4, type: 'full-chunk' },
     { id: 'S5', label: 'stream OFF, chunk OFF', make: s5, type: 'full-plain' },
     { id: 'M1', label: 'markdown-it (baseline)', make: () => MarkdownItOriginal(), type: 'md-original' },
+    { id: 'E1', label: 'markdown-exit', make: () => createMarkdownExitFactory(), type: 'md-exit' },
     // Remark parse-only scenario (parse throughput, no HTML render)
     { id: 'R1', label: 'remark (parse only)', make: () => unified().use(remarkParse), type: 'remark' },
   ]
@@ -116,6 +118,7 @@ function runMatrix() {
       const one = measure(() => (
         sc.type.startsWith('stream') ? md.stream.parse(doc, envStream)
         : sc.type === 'md-original' ? md.parse(doc, {})
+        : sc.type === 'md-exit' ? md.parse(doc)
         : sc.type === 'remark' ? md.parse(doc)
         : md.parse(doc, envOne)
       ), oneIters)
@@ -133,6 +136,7 @@ function runMatrix() {
           if (sc.type === 'stream-no-cache-chunk') md.stream.reset()
           if (sc.type.startsWith('stream')) md.stream.parse(accWarm, envStream)
           else if (sc.type === 'md-original') md.parse(accWarm, {})
+          else if (sc.type === 'md-exit') md.parse(accWarm)
           else md.parse(accWarm, envAppendWarm)
         }
       }
@@ -149,6 +153,7 @@ function runMatrix() {
     const t = performance.now()
     if (sc.type.startsWith('stream')) md.stream.parse(acc, envStream)
     else if (sc.type === 'md-original') md.parse(acc, {})
+    else if (sc.type === 'md-exit') md.parse(acc)
     else if (sc.type === 'remark') md.parse(acc)
     else md.parse(acc, envAppend)
     appendMs += performance.now() - t
@@ -170,6 +175,7 @@ function runMatrix() {
           const t = performance.now()
           if (sc.type.startsWith('stream')) md.stream.parse(acc, envStream)
           else if (sc.type === 'md-original') md.parse(acc, {})
+          else if (sc.type === 'md-exit') md.parse(acc)
           else if (sc.type === 'remark') md.parse(acc)
           else md.parse(acc, envAppend)
           appendLineMs += performance.now() - t
@@ -190,6 +196,7 @@ function runMatrix() {
         const t = performance.now()
         if (sc.type.startsWith('stream')) md.stream.parse(full, envStream)
         else if (sc.type === 'md-original') md.parse(full, {})
+        else if (sc.type === 'md-exit') md.parse(full)
         else if (sc.type === 'remark') md.parse(full)
         else md.parse(full, envAppend)
         replaceMs += performance.now() - t
@@ -222,6 +229,7 @@ function measureColdHot() {
     { id: 'TS', label: 'markdown-it-ts (stream+chunk)', type: 'ts', make: () => MarkdownIt({ stream: true, streamChunkedFallback: true, streamChunkSizeChars: 10_000, streamChunkSizeLines: 200, streamChunkFenceAware: true }) },
     { id: 'MD', label: 'markdown-it (baseline)', type: 'md-original', make: () => MarkdownItOriginal() },
     { id: 'RM', label: 'remark (parse only)', type: 'remark', make: () => unified().use(remarkParse) },
+    { id: 'EX', label: 'markdown-exit', type: 'md-exit', make: () => createMarkdownExitFactory() },
   ]
 
   const coldHot = []
@@ -264,6 +272,7 @@ function measureRenderComparisons() {
     { id: 'TS_RENDER', label: 'markdown-it-ts.render', type: 'ts', make: () => MarkdownIt() },
     { id: 'MD_RENDER', label: 'markdown-it.render', type: 'md-original', make: () => MarkdownItOriginal() },
     { id: 'RM_RENDER', label: 'remark+rehype', type: 'remark', make: () => unified().use(remarkParse).use(remarkRehype).use(rehypeStringify) },
+    { id: 'EX_RENDER', label: 'markdown-exit', type: 'md-exit', make: () => createMarkdownExitFactory() },
   ]
 
   const results = []
@@ -275,7 +284,9 @@ function measureRenderComparisons() {
       const runner = () => (
         impl.type === 'remark'
           ? inst.processSync(doc).toString()
-          : inst.render(doc)
+          : impl.type === 'md-exit'
+            ? inst.render(doc)
+            : inst.render(doc)
       )
       runner(); runner(); runner()
       const { ms } = measure(runner, oneIters)
@@ -290,7 +301,7 @@ function toMarkdown(results, coldHot) {
   const lines = []
   lines.push('# Performance Report (latest run)')
   lines.push('')
-  const ids = ['S1','S2','S3','S4','S5','M1']
+  const ids = ['S1','S2','S3','S4','S5','M1','E1']
   lines.push('| Size (chars) | ' + ids.map(id => `${id} one`).join(' | ') + ' | ' + ids.map(id => `${id} append(par)`).join(' | ') + ' | ' + ids.map(id => `${id} append(line)`).join(' | ') + ' | ' + ids.map(id => `${id} replace`).join(' | ') + ' |')
   lines.push('|---:|' + ids.map(()=> '---:').join('|') + '|' + ids.map(()=> '---:').join('|') + '|' + ids.map(()=> '---:').join('|') + '|' + ids.map(()=> '---:').join('|') + '|')
   const bySize = new Map()
@@ -380,14 +391,15 @@ function toMarkdown(results, coldHot) {
   lines.push('This measures end-to-end markdown → HTML rendering throughput across markdown-it-ts, upstream markdown-it, and remark+rehype (parse + stringify). Lower is better.')
   lines.push('')
   const renderBySize = groupBy(renderComparisons, 'size')
-  lines.push('| Size (chars) | markdown-it-ts.render | markdown-it.render | remark+rehype |')
-  lines.push('|---:|---:|---:|---:|')
+  lines.push('| Size (chars) | markdown-it-ts.render | markdown-it.render | remark+rehype | markdown-exit |')
+  lines.push('|---:|---:|---:|---:|---:|')
   for (const [size, arr] of Array.from(renderBySize.entries()).sort((a, b) => a[0] - b[0])) {
     const get = (id) => arr.find(r => r.scenario === id)?.renderMs
     const ts = get('TS_RENDER')
     const mdRender = get('MD_RENDER')
     const remarkRender = get('RM_RENDER')
-    lines.push(`| ${size} | ${ts != null ? fmt(ts) : '-'} | ${mdRender != null ? fmt(mdRender) : '-'} | ${remarkRender != null ? fmt(remarkRender) : '-'} |`)
+    const exitRender = get('EX_RENDER')
+    lines.push(`| ${size} | ${ts != null ? fmt(ts) : '-'} | ${mdRender != null ? fmt(mdRender) : '-'} | ${remarkRender != null ? fmt(remarkRender) : '-'} | ${exitRender != null ? fmt(exitRender) : '-'} |`)
   }
   lines.push('')
   lines.push('Render vs markdown-it:')
@@ -407,6 +419,15 @@ function toMarkdown(results, coldHot) {
     const ratio = remarkRender.renderMs / ts.renderMs
     lines.push(`- ${Number(size).toLocaleString()} chars: ${fmt(ts.renderMs)} vs ${fmt(remarkRender.renderMs)} → ${ratio.toFixed(2)}× faster`)
   }
+    lines.push('')
+    lines.push('Render vs markdown-exit:')
+    for (const [size, arr] of Array.from(renderBySize.entries()).sort((a, b) => a[0] - b[0])) {
+      const ts = arr.find(r => r.scenario === 'TS_RENDER')
+      const exitRender = arr.find(r => r.scenario === 'EX_RENDER')
+      if (!ts || !exitRender) continue
+      const ratio = exitRender.renderMs / ts.renderMs
+      lines.push(`- ${Number(size).toLocaleString()} chars: ${fmt(ts.renderMs)} vs ${fmt(exitRender.renderMs)} → ${ratio.toFixed(2)}× faster`)
+    }
   lines.push('')
   // Best-of TS vs baseline summary
   lines.push('## Best-of markdown-it-ts vs markdown-it (baseline)')

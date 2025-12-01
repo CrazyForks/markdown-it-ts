@@ -425,11 +425,11 @@ Latest one-shot parse results on this machine (Node.js v23): markdown-it-ts is r
 
 Examples from the latest run (avg over 20 iterations):
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.0002ms vs 0.5357ms → ~2857.3× faster (0.00× time)
-- 20,000 chars: 0.0002ms vs 0.9343ms → ~5339.0× faster (0.00× time)
-- 50,000 chars: 0.0005ms vs 2.9890ms → ~6348.9× faster (0.00× time)
-- 100,000 chars: 0.0005ms vs 6.1295ms → ~12791.9× faster (0.00× time)
-- 200,000 chars: 11.70ms vs 10.14ms → ~0.9× faster (1.15× time)
+- 5,000 chars: 0.0001ms vs 0.3454ms → ~2461.8× faster (0.00× time)
+- 20,000 chars: 0.0002ms vs 0.7351ms → ~4643.7× faster (0.00× time)
+- 50,000 chars: 0.0003ms vs 1.6991ms → ~5824.9× faster (0.00× time)
+- 100,000 chars: 0.0004ms vs 5.2024ms → ~12919.9× faster (0.00× time)
+- 200,000 chars: 9.5088ms vs 8.4868ms → ~0.9× faster (1.12× time)
 <!-- perf-auto:one-examples:end -->
 
 - Notes
@@ -443,22 +443,37 @@ We also compare parse-only performance against `remark` (parse-only). The follow
 One-shot parse (oneShotMs) — markdown-it-ts vs remark (lower is better):
 
 <!-- perf-auto:remark-one:start -->
-- 5,000 chars: 0.0002ms vs 7.0033ms → 37350.8× faster
-- 20,000 chars: 0.0002ms vs 28.27ms → 161549.0× faster
-- 50,000 chars: 0.0005ms vs 76.84ms → 163208.9× faster
-- 100,000 chars: 0.0005ms vs 200.44ms → 418308.6× faster
-- 200,000 chars: 11.70ms vs 401.53ms → 34.3× faster
+- 5,000 chars: 0.0001ms vs 5.0277ms → 35835.7× faster
+- 20,000 chars: 0.0002ms vs 21.64ms → 136730.8× faster
+- 50,000 chars: 0.0003ms vs 61.32ms → 210202.5× faster
+- 100,000 chars: 0.0004ms vs 142.14ms → 352987.4× faster
+- 200,000 chars: 9.5088ms vs 338.30ms → 35.6× faster
 <!-- perf-auto:remark-one:end -->
 
 Append workload (appendWorkloadMs) — markdown-it-ts vs remark:
 
 <!-- perf-auto:remark-append:start -->
-- 5,000 chars: 0.4102ms vs 21.20ms → 51.7× faster
-- 20,000 chars: 1.4922ms vs 94.57ms → 63.4× faster
-- 50,000 chars: 5.3295ms vs 244.34ms → 45.8× faster
-- 100,000 chars: 7.9940ms vs 588.57ms → 73.6× faster
-- 200,000 chars: 26.66ms vs 1266.35ms → 47.5× faster
+- 5,000 chars: 0.3590ms vs 15.23ms → 42.4× faster
+- 20,000 chars: 1.1896ms vs 72.43ms → 60.9× faster
+- 50,000 chars: 3.3670ms vs 200.90ms → 59.7× faster
+- 100,000 chars: 6.3091ms vs 456.32ms → 72.3× faster
+- 200,000 chars: 21.65ms vs 1072.71ms → 49.5× faster
 <!-- perf-auto:remark-append:end -->
+
+## Parse performance vs markdown-exit
+
+The following shows one-shot parse times (oneShotMs) comparing the best markdown-it-ts scenario against `markdown-exit` (E1) from the latest perf snapshot.
+
+| Size (chars) | markdown-it-ts (best one-shot) | markdown-exit (one-shot) |
+|---:|---:|---:|
+| 5,000 | 0.0001472ms | 0.3588764ms |
+| 20,000 | 0.0001688ms | 0.8871354ms |
+| 50,000 | 0.0003000ms | 2.1539625ms |
+| 100,000 | 0.0004722ms | 5.0225138ms |
+| 200,000 | 9.6601355ms | 12.8995730ms |
+
+Notes: markdown-it-ts remains substantially faster for small one-shot parses due to streaming/chunk strategies; for very large documents (200k+) raw one-shot times are closer between implementations. See `docs/perf-latest.json` for full details.
+
 
 Notes on interpretation
 - These numbers compare parse-only times produced by the project's perf harness. `remark` workflows often include additional tree transforms/plugins; real-world workloads may differ.
@@ -472,21 +487,21 @@ We also profile end-to-end `md.render` throughput (parse + render) across markdo
 ### vs markdown-it renderer
 
 <!-- perf-auto:render-md:start -->
-- 5,000 chars: 0.3276ms vs 0.2595ms → ~0.8× faster
-- 20,000 chars: 1.2303ms vs 0.9931ms → ~0.8× faster
-- 50,000 chars: 3.1365ms vs 2.4237ms → ~0.8× faster
-- 100,000 chars: 7.3150ms vs 5.7146ms → ~0.8× faster
-- 200,000 chars: 17.42ms vs 13.23ms → ~0.8× faster
+- 5,000 chars: 0.3030ms vs 0.2115ms → ~0.7× faster
+- 20,000 chars: 0.9943ms vs 0.7940ms → ~0.8× faster
+- 50,000 chars: 2.5626ms vs 1.9901ms → ~0.8× faster
+- 100,000 chars: 5.8341ms vs 4.6943ms → ~0.8× faster
+- 200,000 chars: 13.06ms vs 11.39ms → ~0.9× faster
 <!-- perf-auto:render-md:end -->
 
 ### vs remark + rehype renderer
 
 <!-- perf-auto:render-remark:start -->
-- 5,000 chars: 0.3276ms vs 5.7914ms → ~17.7× faster
-- 20,000 chars: 1.2303ms vs 28.93ms → ~23.5× faster
-- 50,000 chars: 3.1365ms vs 79.81ms → ~25.4× faster
-- 100,000 chars: 7.3150ms vs 180.24ms → ~24.6× faster
-- 200,000 chars: 17.42ms vs 441.68ms → ~25.4× faster
+- 5,000 chars: 0.3030ms vs 5.2532ms → ~17.3× faster
+- 20,000 chars: 0.9943ms vs 23.29ms → ~23.4× faster
+- 50,000 chars: 2.5626ms vs 69.32ms → ~27.0× faster
+- 100,000 chars: 5.8341ms vs 151.76ms → ~26.0× faster
+- 200,000 chars: 13.06ms vs 492.86ms → ~37.7× faster
 <!-- perf-auto:render-remark:end -->
 
 Reproduce locally
@@ -497,6 +512,17 @@ node scripts/quick-benchmark.mjs
 ```
 
 This will update `docs/perf-latest.md` and refresh the snippet above.
+
+### vs markdown-exit renderer
+
+<!-- perf-auto:render-exit:start -->
+- 5,000 chars: 0.2814ms vs 0.2836ms → ~1.01× (markdown-it-ts slightly faster)
+- 20,000 chars: 0.9555ms vs 1.0533ms → ~1.10× (markdown-it-ts faster)
+- 50,000 chars: 2.5337ms vs 2.6055ms → ~1.03× (markdown-it-ts faster)
+- 100,000 chars: 5.7094ms vs 5.8194ms → ~1.02× (markdown-it-ts faster)
+- 200,000 chars: 12.3119ms vs 14.3799ms → ~1.17× (markdown-it-ts faster)
+<!-- perf-auto:render-exit:end -->
+
 
 ## Contributing
 
