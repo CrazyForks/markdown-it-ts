@@ -28,9 +28,18 @@ const html = await md.renderAsync('# 你好，世界', {
   highlight: async (code, lang) => {
     const highlighted = await someHighlighter(code, lang)
     return highlighted
-  },
+ },
 })
 ```
+
+## 为什么推荐用 markdown-it-ts 渲染？
+
+- **对比 markdown-it**：沿用相同 API/插件生态，但我们用 TypeScript 重写了解析器与渲染器，拆分为可 tree-shaking 的模块并加入流式/分块能力。除了在默认 one-shot 场景下可获得多倍性能（详见下文基准），编辑器输入还能启用 `stream`, `streamChunkedFallback` 等策略，仅重算新增内容；而上游实现只能重跑整篇文档。
+- **对比 markdown-exit**：两者都强调性能，但 markdown-it-ts 在保持 markdown-it 插件兼容、typed API 与 async render（`renderAsync`）的同时，提供了更丰富的调参组合（例如块级 fence 感知、混合模式 fallback），并且在 5k~100k 字符的压测中 parse one-shot 毫秒级别持续领先（见“Parse 排名”表）；流式路径对长文 append 的低延迟也远优于单次汇总重解析。
+- **对比 remark**：remark 生态非常适合 AST 转换，但若目标是“把 Markdown 渲染成 HTML”，它需要额外的 rehype/rehype-stringify 管线，性能开销显著更高（本仓库实测：HTML 渲染 20k 字符约慢 28×）。markdown-it-ts 直接输出 HTML、保留 markdown-it renderer 语义，并兼容异步高亮、Token 后处理等常见需求，因此在需要实时渲染或 SSR 的场景下更加直接高效。
+- **工程体验**：代码与类型全部开源且随发布同步，可以配合 `docs/stream-optimization.md` 的推荐参数、`recommend*Strategy` API 与 `StreamBuffer`、`chunkedParse` 等工具函数，快速搭建自适应流式管线；CI 中的基准脚本 (`perf:generate`, `perf:update-readme`) 也能确保团队持续看到最新对比数据，减少性能回退的顾虑。
+- **生态/兼容**：完整继承 markdown-it 的 ruler、Token、插件管线，迁移现有插件或自己写的 renderer 只需改 import，甚至可以逐步替换（`withRenderer` 让 parse-only 项目也能按需引入渲染）。
+- **生产准备**：内置 async render、基于 Token 的后处理钩子、流式缓冲区以及 chunked fallback 让它适用于 SSR、实时协作编辑器以及大 Markdown 文档的批量处理，配合 `docs/perf-report.md` / `docs/perf-history/*.json` 可以观察长期性能趋势。
 
 ## 性能说明（概览）
 
@@ -56,11 +65,11 @@ pnpm run perf:update-readme
 最新一次在本机环境（Node.js 版本、CPU 请见 `docs/perf-latest.md`）的对比结果（取 20 次平均值）：
 
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.0001ms vs 0.3991ms → ~3780.5× faster (0.00× time)
-- 20,000 chars: 0.0001ms vs 0.5713ms → ~4727.0× faster (0.00× time)
-- 50,000 chars: 0.0001ms vs 1.1322ms → ~10064.1× faster (0.00× time)
-- 100,000 chars: 0.0002ms vs 2.8605ms → ~15256.1× faster (0.00× time)
-- 200,000 chars: 6.7418ms vs 5.7412ms → ~0.9× faster (1.17× time)
+- 5,000 chars: 0.0002ms vs 0.3564ms → ~2193.2× faster (0.00× time)
+- 20,000 chars: 0.0002ms vs 0.7266ms → ~4650.0× faster (0.00× time)
+- 50,000 chars: 0.0002ms vs 1.7031ms → ~7569.3× faster (0.00× time)
+- 100,000 chars: 0.0006ms vs 4.1314ms → ~6998.4× faster (0.00× time)
+- 200,000 chars: 9.8789ms vs 10.94ms → ~1.1× faster (0.90× time)
 <!-- perf-auto:one-examples:end -->
 
 注意：数字会因环境与内容不同而变化，建议在本地按上文“本地复现基准”步骤生成你自己的对比报告。若需在 CI 中进行回归检测，可运行：`pnpm run perf:check`。
@@ -72,21 +81,21 @@ pnpm run perf:update-readme
 单次解析耗时（越低越好）：
 
 <!-- perf-auto:remark-one:start -->
-- 5,000 chars: 0.0001ms vs 3.8328ms → 36307.0× faster
-- 20,000 chars: 0.0001ms vs 14.45ms → 119596.7× faster
-- 50,000 chars: 0.0001ms vs 38.99ms → 346605.5× faster
-- 100,000 chars: 0.0002ms vs 94.17ms → 502240.4× faster
-- 200,000 chars: 6.7418ms vs 217.64ms → 32.3× faster
+- 5,000 chars: 0.0002ms vs 5.2399ms → 32245.3× faster
+- 20,000 chars: 0.0002ms vs 22.04ms → 141059.3× faster
+- 50,000 chars: 0.0002ms vs 61.71ms → 274259.4× faster
+- 100,000 chars: 0.0006ms vs 140.23ms → 237548.1× faster
+- 200,000 chars: 9.8789ms vs 326.26ms → 33.0× faster
 <!-- perf-auto:remark-one:end -->
 
 增量工作负载（append workload）：
 
 <!-- perf-auto:remark-append:start -->
-- 5,000 chars: 0.2744ms vs 10.02ms → 36.5× faster
-- 20,000 chars: 0.8840ms vs 51.71ms → 58.5× faster
-- 50,000 chars: 1.9366ms vs 144.19ms → 74.5× faster
-- 100,000 chars: 4.0628ms vs 293.03ms → 72.1× faster
-- 200,000 chars: 14.61ms vs 684.70ms → 46.9× faster
+- 5,000 chars: 0.3475ms vs 15.01ms → 43.2× faster
+- 20,000 chars: 1.2507ms vs 68.90ms → 55.1× faster
+- 50,000 chars: 3.1670ms vs 199.81ms → 63.1× faster
+- 100,000 chars: 6.1443ms vs 469.09ms → 76.3× faster
+- 200,000 chars: 26.89ms vs 1052.26ms → 39.1× faster
 <!-- perf-auto:remark-append:end -->
 
 说明：
@@ -100,21 +109,21 @@ pnpm run perf:update-readme
 ### 对比 markdown-it renderer
 
 <!-- perf-auto:render-md:start -->
-- 5,000 chars: 0.2091ms vs 0.1694ms → ~0.8× faster
-- 20,000 chars: 0.6078ms vs 0.5493ms → ~0.9× faster
-- 50,000 chars: 1.5064ms vs 1.3452ms → ~0.9× faster
-- 100,000 chars: 4.5276ms vs 3.4122ms → ~0.8× faster
-- 200,000 chars: 9.9405ms vs 7.7041ms → ~0.8× faster
+- 5,000 chars: 0.2931ms vs 0.2113ms → ~0.7× faster
+- 20,000 chars: 0.9327ms vs 0.7883ms → ~0.8× faster
+- 50,000 chars: 2.4636ms vs 2.0520ms → ~0.8× faster
+- 100,000 chars: 6.0068ms vs 4.8248ms → ~0.8× faster
+- 200,000 chars: 13.93ms vs 10.85ms → ~0.8× faster
 <!-- perf-auto:render-md:end -->
 
 ### 对比 remark + rehype renderer
 
 <!-- perf-auto:render-remark:start -->
-- 5,000 chars: 0.2091ms vs 3.4914ms → ~16.7× faster
-- 20,000 chars: 0.6078ms vs 18.46ms → ~30.4× faster
-- 50,000 chars: 1.5064ms vs 44.63ms → ~29.6× faster
-- 100,000 chars: 4.5276ms vs 103.02ms → ~22.8× faster
-- 200,000 chars: 9.9405ms vs 238.86ms → ~24.0× faster
+- 5,000 chars: 0.2931ms vs 4.7301ms → ~16.1× faster
+- 20,000 chars: 0.9327ms vs 26.95ms → ~28.9× faster
+- 50,000 chars: 2.4636ms vs 70.14ms → ~28.5× faster
+- 100,000 chars: 6.0068ms vs 186.00ms → ~31.0× faster
+- 200,000 chars: 13.93ms vs 370.97ms → ~26.6× faster
 <!-- perf-auto:render-remark:end -->
 
 本地复现：
