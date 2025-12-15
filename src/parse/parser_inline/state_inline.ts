@@ -1,4 +1,5 @@
 import { Token } from '../../common/token'
+import { isMdAsciiPunct, isPunctChar, isWhiteSpace } from '../../common/utils'
 
 /**
  * StateInline - state object for inline parser
@@ -102,48 +103,32 @@ export class StateInline {
     let pos = start
 
     // Count consecutive markers
-    let count = 0
-    while (pos < posMax && src.charCodeAt(pos) === marker) {
-      count++
+    while (pos < posMax && src.charCodeAt(pos) === marker)
       pos++
-    }
 
+    const count = pos - start
     if (count < 1)
       return null
 
+    // Treat start/end of line as whitespace
     const lastChar = start > 0 ? src.charCodeAt(start - 1) : 0x20
     const nextChar = pos < posMax ? src.charCodeAt(pos) : 0x20
 
-    const isLastPunctChar = lastChar === 0x20 || lastChar === 0x0A
-    const isNextPunctChar = nextChar === 0x20 || nextChar === 0x0A
-    const isLastWhiteSpace = lastChar === 0x20
-    const isNextWhiteSpace = nextChar === 0x20
+    const isLastPunctChar = isMdAsciiPunct(lastChar) || isPunctChar(String.fromCharCode(lastChar))
+    const isNextPunctChar = isMdAsciiPunct(nextChar) || isPunctChar(String.fromCharCode(nextChar))
 
-    let can_open = true
-    let can_close = true
+    const isLastWhiteSpace = isWhiteSpace(lastChar)
+    const isNextWhiteSpace = isWhiteSpace(nextChar)
 
-    if (isNextWhiteSpace) {
-      can_open = false
-    }
-    else if (isNextPunctChar) {
-      if (!(isLastWhiteSpace || isLastPunctChar)) {
-        can_open = false
-      }
-    }
+    const left_flanking
+      = !isNextWhiteSpace
+        && (!isNextPunctChar || isLastWhiteSpace || isLastPunctChar)
+    const right_flanking
+      = !isLastWhiteSpace
+        && (!isLastPunctChar || isNextWhiteSpace || isNextPunctChar)
 
-    if (isLastWhiteSpace) {
-      can_close = false
-    }
-    else if (isLastPunctChar) {
-      if (!(isNextWhiteSpace || isNextPunctChar)) {
-        can_close = false
-      }
-    }
-
-    if (!canSplitWord) {
-      can_open = can_open && (!isLastPunctChar || isLastWhiteSpace)
-      can_close = can_close && (!isNextPunctChar || isNextWhiteSpace)
-    }
+    const can_open = left_flanking && (canSplitWord || !right_flanking || isLastPunctChar)
+    const can_close = right_flanking && (canSplitWord || !left_flanking || isNextPunctChar)
 
     return {
       can_open,

@@ -65,11 +65,11 @@ pnpm run perf:update-readme
 最新一次在本机环境（Node.js 版本、CPU 请见 `docs/perf-latest.md`）的对比结果（取 20 次平均值）：
 
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.0002ms vs 0.3693ms → ~2045.1× faster (0.00× time)
-- 20,000 chars: 0.0002ms vs 0.9063ms → ~4944.2× faster (0.00× time)
-- 50,000 chars: 0.0002ms vs 2.0944ms → ~9141.9× faster (0.00× time)
-- 100,000 chars: 0.0005ms vs 4.9496ms → ~10180.9× faster (0.00× time)
-- 200,000 chars: 11.75ms vs 10.34ms → ~0.9× faster (1.14× time)
+- 5,000 chars: 0.0002ms vs 0.3455ms → ~2005.7× faster (0.00× time)
+- 20,000 chars: 0.0002ms vs 0.7093ms → ~4665.1× faster (0.00× time)
+- 50,000 chars: 0.0003ms vs 1.6495ms → ~5348.7× faster (0.00× time)
+- 100,000 chars: 0.0003ms vs 4.0234ms → ~13478.9× faster (0.00× time)
+- 200,000 chars: 8.9896ms vs 8.0486ms → ~0.9× faster (1.12× time)
 <!-- perf-auto:one-examples:end -->
 
 注意：数字会因环境与内容不同而变化，建议在本地按上文“本地复现基准”步骤生成你自己的对比报告。若需在 CI 中进行回归检测，可运行：`pnpm run perf:check`。
@@ -81,21 +81,21 @@ pnpm run perf:update-readme
 单次解析耗时（越低越好）：
 
 <!-- perf-auto:remark-one:start -->
-- 5,000 chars: 0.0002ms vs 6.2896ms → 34832.8× faster
-- 20,000 chars: 0.0002ms vs 26.19ms → 142896.3× faster
-- 50,000 chars: 0.0002ms vs 75.13ms → 327954.3× faster
-- 100,000 chars: 0.0005ms vs 175.19ms → 360351.8× faster
-- 200,000 chars: 11.75ms vs 422.14ms → 35.9× faster
+- 5,000 chars: 0.0002ms vs 5.0084ms → 29079.4× faster
+- 20,000 chars: 0.0002ms vs 20.52ms → 134988.4× faster
+- 50,000 chars: 0.0003ms vs 70.05ms → 227155.1× faster
+- 100,000 chars: 0.0003ms vs 137.09ms → 459263.2× faster
+- 200,000 chars: 8.9896ms vs 376.63ms → 41.9× faster
 <!-- perf-auto:remark-one:end -->
 
 增量工作负载（append workload）：
 
 <!-- perf-auto:remark-append:start -->
-- 5,000 chars: 0.4173ms vs 19.07ms → 45.7× faster
-- 20,000 chars: 1.5158ms vs 84.32ms → 55.6× faster
-- 50,000 chars: 4.0690ms vs 245.04ms → 60.2× faster
-- 100,000 chars: 7.6029ms vs 568.12ms → 74.7× faster
-- 200,000 chars: 26.24ms vs 1321.50ms → 50.4× faster
+- 5,000 chars: 0.3739ms vs 15.07ms → 40.3× faster
+- 20,000 chars: 1.1675ms vs 68.84ms → 59.0× faster
+- 50,000 chars: 3.3584ms vs 198.06ms → 59.0× faster
+- 100,000 chars: 5.7955ms vs 441.45ms → 76.2× faster
+- 200,000 chars: 20.56ms vs 1191.85ms → 58.0× faster
 <!-- perf-auto:remark-append:end -->
 
 说明：
@@ -109,21 +109,21 @@ pnpm run perf:update-readme
 ### 对比 markdown-it renderer
 
 <!-- perf-auto:render-md:start -->
-- 5,000 chars: 0.3162ms vs 0.2625ms → ~0.8× faster
-- 20,000 chars: 1.1741ms vs 1.0104ms → ~0.9× faster
-- 50,000 chars: 3.0457ms vs 2.5441ms → ~0.8× faster
-- 100,000 chars: 7.0078ms vs 6.0285ms → ~0.9× faster
-- 200,000 chars: 15.94ms vs 13.57ms → ~0.9× faster
+- 5,000 chars: 0.2481ms vs 0.2052ms → ~0.8× faster
+- 20,000 chars: 0.8604ms vs 0.7351ms → ~0.9× faster
+- 50,000 chars: 2.3565ms vs 1.9403ms → ~0.8× faster
+- 100,000 chars: 5.2186ms vs 4.5278ms → ~0.9× faster
+- 200,000 chars: 12.43ms vs 12.05ms → ~1.0× faster
 <!-- perf-auto:render-md:end -->
 
 ### 对比 remark + rehype renderer
 
 <!-- perf-auto:render-remark:start -->
-- 5,000 chars: 0.3162ms vs 6.3421ms → ~20.1× faster
-- 20,000 chars: 1.1741ms vs 29.74ms → ~25.3× faster
-- 50,000 chars: 3.0457ms vs 84.72ms → ~27.8× faster
-- 100,000 chars: 7.0078ms vs 189.38ms → ~27.0× faster
-- 200,000 chars: 15.94ms vs 616.25ms → ~38.7× faster
+- 5,000 chars: 0.2481ms vs 5.1964ms → ~20.9× faster
+- 20,000 chars: 0.8604ms vs 22.75ms → ~26.4× faster
+- 50,000 chars: 2.3565ms vs 63.11ms → ~26.8× faster
+- 100,000 chars: 5.2186ms vs 144.18ms → ~27.6× faster
+- 200,000 chars: 12.43ms vs 456.53ms → ~36.7× faster
 <!-- perf-auto:render-remark:end -->
 
 本地复现：
