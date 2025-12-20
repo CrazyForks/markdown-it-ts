@@ -37,6 +37,7 @@ const html = await md.renderAsync('# 你好，世界', {
 - **对比 markdown-it**：沿用相同 API/插件生态，但我们用 TypeScript 重写了解析器与渲染器，拆分为可 tree-shaking 的模块并加入流式/分块能力。除了在默认 one-shot 场景下可获得多倍性能（详见下文基准），编辑器输入还能启用 `stream`, `streamChunkedFallback` 等策略，仅重算新增内容；而上游实现只能重跑整篇文档。
 - **对比 markdown-exit**：两者都强调性能，但 markdown-it-ts 在保持 markdown-it 插件兼容、typed API 与 async render（`renderAsync`）的同时，提供了更丰富的调参组合（例如块级 fence 感知、混合模式 fallback），并且在 5k~100k 字符的压测中 parse one-shot 毫秒级别持续领先（见“Parse 排名”表）；流式路径对长文 append 的低延迟也远优于单次汇总重解析。
 - **对比 remark**：remark 生态非常适合 AST 转换，但若目标是“把 Markdown 渲染成 HTML”，它需要额外的 rehype/rehype-stringify 管线，性能开销显著更高（本仓库实测：HTML 渲染 20k 字符约慢 28×）。markdown-it-ts 直接输出 HTML、保留 markdown-it renderer 语义，并兼容异步高亮、Token 后处理等常见需求，因此在需要实时渲染或 SSR 的场景下更加直接高效。
+- **对比 micromark**：micromark 是面向 CommonMark 的参考实现，也可直接将 Markdown 渲染为 HTML。markdown-it-ts 则以 markdown-it 的插件 API 与 renderer 语义兼容为目标，同时保持有竞争力的端到端渲染吞吐（见下文“对比 micromark”）。
 - **工程体验**：代码与类型全部开源且随发布同步，可以配合 `docs/stream-optimization.md` 的推荐参数、`recommend*Strategy` API 与 `StreamBuffer`、`chunkedParse` 等工具函数，快速搭建自适应流式管线；CI 中的基准脚本 (`perf:generate`, `perf:update-readme`) 也能确保团队持续看到最新对比数据，减少性能回退的顾虑。
 - **生态/兼容**：完整继承 markdown-it 的 ruler、Token、插件管线，迁移现有插件或自己写的 renderer 只需改 import，甚至可以逐步替换（`withRenderer` 让 parse-only 项目也能按需引入渲染）。
 - **生产准备**：内置 async render、基于 Token 的后处理钩子、流式缓冲区以及 chunked fallback 让它适用于 SSR、实时协作编辑器以及大 Markdown 文档的批量处理，配合 `docs/perf-report.md` / `docs/perf-history/*.json` 可以观察长期性能趋势。
@@ -65,11 +66,11 @@ pnpm run perf:update-readme
 最新一次在本机环境（Node.js 版本、CPU 请见 `docs/perf-latest.md`）的对比结果（取 20 次平均值）：
 
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.0002ms vs 0.3455ms → ~2005.7× faster (0.00× time)
-- 20,000 chars: 0.0002ms vs 0.7093ms → ~4665.1× faster (0.00× time)
-- 50,000 chars: 0.0003ms vs 1.6495ms → ~5348.7× faster (0.00× time)
-- 100,000 chars: 0.0003ms vs 4.0234ms → ~13478.9× faster (0.00× time)
-- 200,000 chars: 8.9896ms vs 8.0486ms → ~0.9× faster (1.12× time)
+- 5,000 chars: 0.0002ms vs 0.3936ms → ~1967.8× faster (0.00× time)
+- 20,000 chars: 0.0002ms vs 0.9498ms → ~4651.5× faster (0.00× time)
+- 50,000 chars: 0.0004ms vs 2.1665ms → ~5842.7× faster (0.00× time)
+- 100,000 chars: 0.0004ms vs 5.0462ms → ~11915.4× faster (0.00× time)
+- 200,000 chars: 11.79ms vs 10.65ms → ~0.9× faster (1.11× time)
 <!-- perf-auto:one-examples:end -->
 
 注意：数字会因环境与内容不同而变化，建议在本地按上文“本地复现基准”步骤生成你自己的对比报告。若需在 CI 中进行回归检测，可运行：`pnpm run perf:check`。
@@ -81,26 +82,50 @@ pnpm run perf:update-readme
 单次解析耗时（越低越好）：
 
 <!-- perf-auto:remark-one:start -->
-- 5,000 chars: 0.0002ms vs 5.0084ms → 29079.4× faster
-- 20,000 chars: 0.0002ms vs 20.52ms → 134988.4× faster
-- 50,000 chars: 0.0003ms vs 70.05ms → 227155.1× faster
-- 100,000 chars: 0.0003ms vs 137.09ms → 459263.2× faster
-- 200,000 chars: 8.9896ms vs 376.63ms → 41.9× faster
+- 5,000 chars: 0.0002ms vs 6.2269ms → 31134.6× faster
+- 20,000 chars: 0.0002ms vs 27.38ms → 134075.5× faster
+- 50,000 chars: 0.0004ms vs 77.89ms → 210053.5× faster
+- 100,000 chars: 0.0004ms vs 173.13ms → 408806.6× faster
+- 200,000 chars: 11.79ms vs 462.07ms → 39.2× faster
 <!-- perf-auto:remark-one:end -->
 
 增量工作负载（append workload）：
 
 <!-- perf-auto:remark-append:start -->
-- 5,000 chars: 0.3739ms vs 15.07ms → 40.3× faster
-- 20,000 chars: 1.1675ms vs 68.84ms → 59.0× faster
-- 50,000 chars: 3.3584ms vs 198.06ms → 59.0× faster
-- 100,000 chars: 5.7955ms vs 441.45ms → 76.2× faster
-- 200,000 chars: 20.56ms vs 1191.85ms → 58.0× faster
+- 5,000 chars: 0.4003ms vs 18.21ms → 45.5× faster
+- 20,000 chars: 1.7064ms vs 93.20ms → 54.6× faster
+- 50,000 chars: 4.3152ms vs 284.41ms → 65.9× faster
+- 100,000 chars: 7.9728ms vs 573.43ms → 71.9× faster
+- 200,000 chars: 26.07ms vs 1361.77ms → 52.2× faster
 <!-- perf-auto:remark-append:end -->
 
 说明：
 - `remark` 常与其他 rehype/插件配合，真实项目的耗时可能更高；这里仅对其解析吞吐进行对比。
 - 结果依赖于机器配置与内容形态，建议参考 `docs/perf-latest.json` 或 `docs/perf-history/*.json` 上的完整数据。
+
+### 与 micromark 的解析性能对比（仅解析）
+
+我们也会比较 `micromark`（场景 `MM1`）的解析吞吐，这里只测其 preprocess + parse + postprocess 管线（不包含 HTML compile）。以下数据来自 `docs/perf-latest.json`。
+
+一次性解析（oneShotMs）—— markdown-it-ts vs micromark-based parse：
+
+<!-- perf-auto:micromark-one:start -->
+- 5,000 chars: 0.0002ms vs 5.8611ms → 29305.3× faster
+- 20,000 chars: 0.0002ms vs 24.76ms → 121233.5× faster
+- 50,000 chars: 0.0004ms vs 62.55ms → 168700.6× faster
+- 100,000 chars: 0.0004ms vs 121.10ms → 285945.5× faster
+- 200,000 chars: 11.79ms vs 228.87ms → 19.4× faster
+<!-- perf-auto:micromark-one:end -->
+
+追加工作负载（appendWorkloadMs）—— markdown-it-ts vs micromark-based parse：
+
+<!-- perf-auto:micromark-append:start -->
+- 5,000 chars: 0.4003ms vs 17.09ms → 42.7× faster
+- 20,000 chars: 1.7064ms vs 83.09ms → 48.7× faster
+- 50,000 chars: 4.3152ms vs 203.91ms → 47.3× faster
+- 100,000 chars: 7.9728ms vs 394.34ms → 49.5× faster
+- 200,000 chars: 26.07ms vs 815.87ms → 31.3× faster
+<!-- perf-auto:micromark-append:end -->
 
 ## 渲染性能（markdown → HTML）
 
@@ -109,22 +134,32 @@ pnpm run perf:update-readme
 ### 对比 markdown-it renderer
 
 <!-- perf-auto:render-md:start -->
-- 5,000 chars: 0.2481ms vs 0.2052ms → ~0.8× faster
-- 20,000 chars: 0.8604ms vs 0.7351ms → ~0.9× faster
-- 50,000 chars: 2.3565ms vs 1.9403ms → ~0.8× faster
-- 100,000 chars: 5.2186ms vs 4.5278ms → ~0.9× faster
-- 200,000 chars: 12.43ms vs 12.05ms → ~1.0× faster
+- 5,000 chars: 0.4013ms vs 0.2947ms → ~0.7× faster
+- 20,000 chars: 1.3057ms vs 1.0596ms → ~0.8× faster
+- 50,000 chars: 3.4224ms vs 2.8393ms → ~0.8× faster
+- 100,000 chars: 7.4702ms vs 6.2038ms → ~0.8× faster
+- 200,000 chars: 18.66ms vs 16.53ms → ~0.9× faster
 <!-- perf-auto:render-md:end -->
 
 ### 对比 remark + rehype renderer
 
 <!-- perf-auto:render-remark:start -->
-- 5,000 chars: 0.2481ms vs 5.1964ms → ~20.9× faster
-- 20,000 chars: 0.8604ms vs 22.75ms → ~26.4× faster
-- 50,000 chars: 2.3565ms vs 63.11ms → ~26.8× faster
-- 100,000 chars: 5.2186ms vs 144.18ms → ~27.6× faster
-- 200,000 chars: 12.43ms vs 456.53ms → ~36.7× faster
+- 5,000 chars: 0.4013ms vs 7.1699ms → ~17.9× faster
+- 20,000 chars: 1.3057ms vs 35.70ms → ~27.3× faster
+- 50,000 chars: 3.4224ms vs 89.82ms → ~26.2× faster
+- 100,000 chars: 7.4702ms vs 189.36ms → ~25.3× faster
+- 200,000 chars: 18.66ms vs 470.58ms → ~25.2× faster
 <!-- perf-auto:render-remark:end -->
+
+### 对比 micromark（CommonMark 参考实现）
+
+<!-- perf-auto:render-micromark:start -->
+- 5,000 chars: 0.4013ms vs 6.0247ms → ~15.0× faster
+- 20,000 chars: 1.3057ms vs 32.12ms → ~24.6× faster
+- 50,000 chars: 3.4224ms vs 80.69ms → ~23.6× faster
+- 100,000 chars: 7.4702ms vs 137.53ms → ~18.4× faster
+- 200,000 chars: 18.66ms vs 273.06ms → ~14.6× faster
+<!-- perf-auto:render-micromark:end -->
 
 本地复现：
 

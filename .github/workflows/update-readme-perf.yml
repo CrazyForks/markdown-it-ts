@@ -34,7 +34,7 @@ jobs:
             echo "No README changes"
             exit 0
           fi
-          git add README.md
+          git add README.md README.zh-CN.md
           git commit -m "ci: update README perf metrics [skip ci]"
           git push
         env:

@@ -18,8 +18,12 @@ function formatMs(ms) {
 function formatFx(baseline, ts) { return (baseline / ts).toFixed(1) + '×' }
 function formatFrac(baseline, ts) { return (ts / baseline).toFixed(2) + '×' }
 
+function isTsScenarioId(id) {
+  return typeof id === 'string' && id.startsWith('S')
+}
+
 function pickBestTsBy(arr, field) {
-  const tsOnly = arr.filter(r => r.scenario !== 'M1')
+  const tsOnly = arr.filter(r => isTsScenarioId(r.scenario))
   return tsOnly.sort((a,b)=> a[field] - b[field])[0]
 }
 
@@ -86,6 +90,34 @@ function buildRemarkAppendExamples(bySize, sizes) {
   return lines
 }
 
+function buildMicromarkOneExamples(bySize, sizes) {
+  const lines = []
+  for (const size of sizes) {
+    const arr = bySize.get(size)
+    if (!arr) continue
+    const bestTs = pickBestTsBy(arr, 'oneShotMs')
+    const micro = arr.find(r => r.scenario === 'MM1')
+    if (!micro) continue
+    const l = `- ${size.toLocaleString()} chars: ${formatMs(bestTs.oneShotMs)} vs ${formatMs(micro.oneShotMs)} → ${formatFx(micro.oneShotMs, bestTs.oneShotMs)} faster`
+    lines.push(l)
+  }
+  return lines
+}
+
+function buildMicromarkAppendExamples(bySize, sizes) {
+  const lines = []
+  for (const size of sizes) {
+    const arr = bySize.get(size)
+    if (!arr) continue
+    const bestTs = pickBestTsBy(arr, 'appendWorkloadMs')
+    const micro = arr.find(r => r.scenario === 'MM1')
+    if (!micro) continue
+    const l = `- ${size.toLocaleString()} chars: ${formatMs(bestTs.appendWorkloadMs)} vs ${formatMs(micro.appendWorkloadMs)} → ${formatFx(micro.appendWorkloadMs, bestTs.appendWorkloadMs)} faster`
+    lines.push(l)
+  }
+  return lines
+}
+
 function buildRenderVsMarkdownIt(bySize, sizes) {
   const lines = []
   for (const size of sizes) {
@@ -109,6 +141,20 @@ function buildRenderVsRemark(bySize, sizes) {
     const remark = arr.find(r => r.scenario === 'RM_RENDER')
     if (!ts || !remark) continue
     const l = `- ${size.toLocaleString()} chars: ${formatMs(ts.renderMs)} vs ${formatMs(remark.renderMs)} → ~${formatFx(remark.renderMs, ts.renderMs)} faster`
+    lines.push(l)
+  }
+  return lines
+}
+
+function buildRenderVsMicromark(bySize, sizes) {
+  const lines = []
+  for (const size of sizes) {
+    const arr = bySize.get(size)
+    if (!arr) continue
+    const ts = arr.find(r => r.scenario === 'TS_RENDER')
+    const micro = arr.find(r => r.scenario === 'MM_RENDER')
+    if (!ts || !micro) continue
+    const l = `- ${size.toLocaleString()} chars: ${formatMs(ts.renderMs)} vs ${formatMs(micro.renderMs)} → ~${formatFx(micro.renderMs, ts.renderMs)} faster`
     lines.push(l)
   }
   return lines
@@ -186,8 +232,11 @@ function main() {
     append: buildAppendExamples(bySize, appendSizes),
     remarkOne: buildRemarkOneExamples(bySize, oneSizes),
     remarkAppend: buildRemarkAppendExamples(bySize, appendSizes),
+    micromarkOne: buildMicromarkOneExamples(bySize, oneSizes),
+    micromarkAppend: buildMicromarkAppendExamples(bySize, appendSizes),
     renderMd: buildRenderVsMarkdownIt(renderBySize, renderSizes),
     renderRemark: buildRenderVsRemark(renderBySize, renderSizes),
+    renderMicromark: buildRenderVsMicromark(renderBySize, renderSizes),
     comparison: buildComparisonTable(bySize, oneSizes),
   }
 
@@ -209,8 +258,14 @@ function applyBlocks(content, blocks) {
   const endRemarkOne = '<!-- perf-auto:remark-one:end -->'
   const startRemarkApp = '<!-- perf-auto:remark-append:start -->'
   const endRemarkApp = '<!-- perf-auto:remark-append:end -->'
+  const startMicromarkOne = '<!-- perf-auto:micromark-one:start -->'
+  const endMicromarkOne = '<!-- perf-auto:micromark-one:end -->'
+  const startMicromarkApp = '<!-- perf-auto:micromark-append:start -->'
+  const endMicromarkApp = '<!-- perf-auto:micromark-append:end -->'
   const startRenderMd = '<!-- perf-auto:render-md:start -->'
   const endRenderMd = '<!-- perf-auto:render-md:end -->'
+  const startRenderMicromark = '<!-- perf-auto:render-micromark:start -->'
+  const endRenderMicromark = '<!-- perf-auto:render-micromark:end -->'
   const startRenderRemark = '<!-- perf-auto:render-remark:start -->'
   const endRenderRemark = '<!-- perf-auto:render-remark:end -->'
   const startComparison = '<!-- perf-auto:comparison:start -->'
@@ -221,7 +276,10 @@ function applyBlocks(content, blocks) {
   updated = replaceBetween(updated, startApp, endApp, blocks.append)
   updated = replaceBetween(updated, startRemarkOne, endRemarkOne, blocks.remarkOne)
   updated = replaceBetween(updated, startRemarkApp, endRemarkApp, blocks.remarkAppend)
+  updated = replaceBetween(updated, startMicromarkOne, endMicromarkOne, blocks.micromarkOne)
+  updated = replaceBetween(updated, startMicromarkApp, endMicromarkApp, blocks.micromarkAppend)
   updated = replaceBetween(updated, startRenderMd, endRenderMd, blocks.renderMd)
+  updated = replaceBetween(updated, startRenderMicromark, endRenderMicromark, blocks.renderMicromark)
   updated = replaceBetween(updated, startRenderRemark, endRenderRemark, blocks.renderRemark)
   updated = replaceBetween(updated, startComparison, endComparison, blocks.comparison)
   return updated

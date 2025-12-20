@@ -126,7 +126,7 @@ You can refresh `docs/perf-latest.md` on demand via GitHub Actions:
   - node-version: Node.js version (default 20)
   - package-manager: pnpm or npm (default pnpm)
 
-The workflow will install deps, run `perf:generate`, upload the file as an artifact, and commit/push `docs/perf-latest.md` if it changed.
+The workflow will install deps, run `perf:generate`, upload the files as an artifact, and commit/push `docs/perf-latest.md` and `docs/perf-latest.json` if they changed.
 
 Chinese version (zh-CN):
 - Run “Perf Report (zh-CN)” workflow. It executes `perf:generate:zh` and updates `docs/perf-latest.zh-CN.md` similarly.

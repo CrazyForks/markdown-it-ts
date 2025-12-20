@@ -133,6 +133,7 @@
     "markdown-it-sub": "^2.0.0",
     "markdown-it-sup": "^2.0.0",
     "markdown-it-testgen": "^0.1.6",
+    "micromark": "^4.0.2",
     "ndoc": "^6.0.1",
     "needle": "^3.3.1",
     "rehype-stringify": "^10.0.1",
