@@ -235,21 +235,146 @@ export class StreamParser {
         // - lists (-, *, +, or numbered)
         // - fenced code (``` or ~~~)
         // - indented code (4+ spaces)
-        // Use multiline regex to detect these markers at line starts.
-        return /(?:^|\n)\s{0,3}(?:#{1,6}\s|>\s|[-*+]\s|\d+\.\s|```|~~~| {4,})/.test(s)
+        // Scan line starts to avoid allocating regex backtracking state.
+        const len = s.length
+        let lineStart = 0
+        while (lineStart <= len) {
+          let lineEnd = s.indexOf('\n', lineStart)
+          if (lineEnd === -1)
+            lineEnd = len
+          const hasLineBreak = lineEnd < len
+
+          let p = lineStart
+          let indent = 0
+          while (p < lineEnd) {
+            const c = s.charCodeAt(p)
+            if (c === 0x20 /* space */) {
+              indent++
+              p++
+              if (indent >= 4)
+                return true
+              continue
+            }
+            if (c === 0x09 /* tab */) {
+              indent += 4 - (indent % 4)
+              p++
+              if (indent >= 4)
+                return true
+              continue
+            }
+            break
+          }
+
+          if (p < lineEnd) {
+            const ch = s.charCodeAt(p)
+            switch (ch) {
+              case 0x23: { // #
+                let q = p
+                while (q < lineEnd && s.charCodeAt(q) === 0x23) q++
+                const runLen = q - p
+                if (runLen > 0 && runLen <= 6) {
+                  if (q < lineEnd) {
+                    const next = s.charCodeAt(q)
+                    if (next === 0x20 || next === 0x09 || next === 0x0D)
+                      return true
+                  }
+                  else if (q === lineEnd && hasLineBreak) {
+                    return true
+                  }
+                }
+                break
+              }
+              case 0x3E: { // >
+                const nextPos = p + 1
+                if (nextPos < lineEnd) {
+                  const next = s.charCodeAt(nextPos)
+                  if (next === 0x20 || next === 0x09 || next === 0x0D)
+                    return true
+                }
+                else if (nextPos === lineEnd && hasLineBreak) {
+                  return true
+                }
+                break
+              }
+              case 0x2D: // -
+              case 0x2A: // *
+              case 0x2B: { // +
+                const nextPos = p + 1
+                if (nextPos < lineEnd) {
+                  const next = s.charCodeAt(nextPos)
+                  if (next === 0x20 || next === 0x09 || next === 0x0D)
+                    return true
+                }
+                else if (nextPos === lineEnd && hasLineBreak) {
+                  return true
+                }
+                break
+              }
+              case 0x60: // `
+              case 0x7E: { // ~
+                let q = p
+                while (q < lineEnd && s.charCodeAt(q) === ch) q++
+                if (q - p >= 3)
+                  return true
+                break
+              }
+              default: {
+                if (ch >= 0x30 && ch <= 0x39) {
+                  let q = p + 1
+                  while (q < lineEnd) {
+                    const d = s.charCodeAt(q)
+                    if (d < 0x30 || d > 0x39)
+                      break
+                    q++
+                  }
+                  if (q < lineEnd && s.charCodeAt(q) === 0x2E) {
+                    const nextPos = q + 1
+                    if (nextPos < lineEnd) {
+                      const next = s.charCodeAt(nextPos)
+                      if (next === 0x20 || next === 0x09 || next === 0x0D)
+                        return true
+                    }
+                    else if (nextPos === lineEnd && hasLineBreak) {
+                      return true
+                    }
+                  }
+                }
+                break
+              }
+            }
+          }
+
+          if (lineEnd === len)
+            break
+          lineStart = lineEnd + 1
+        }
+        return false
+      }
+
+      let appendedLineCount: number | null = null
+      const getAppendedLineCount = () => {
+        if (appendedLineCount === null)
+          appendedLineCount = countLines(appended)
+        return appendedLineCount
       }
 
       // Decide whether to attempt a context-aware parse based on strategy
       let shouldAttemptContext = false
       switch (ctxStrategy) {
         case 'lines': {
-          const appendedLines = countLines(appended)
-          shouldAttemptContext = appendedLines >= CONTEXT_PARSE_MIN_LINES
+          shouldAttemptContext = getAppendedLineCount() >= CONTEXT_PARSE_MIN_LINES
           break
         }
         case 'constructs': {
-          const appendedLines = countLines(appended)
-          shouldAttemptContext = appendedHasBlockConstructs(appended) || appendedLines >= CONTEXT_PARSE_MIN_LINES || appended.length >= CONTEXT_PARSE_MIN_CHARS
+          if (appended.length >= CONTEXT_PARSE_MIN_CHARS) {
+            shouldAttemptContext = true
+            break
+          }
+          if (appendedHasBlockConstructs(appended)) {
+            shouldAttemptContext = true
+            break
+          }
+          shouldAttemptContext = getAppendedLineCount() >= CONTEXT_PARSE_MIN_LINES
           break
         }
         case 'chars':
@@ -261,9 +386,7 @@ export class StreamParser {
       // and the strategy indicates it's worthwhile.
       if (ctxLines > 0 && shouldAttemptContext) {
         // Build a small context string: last N lines of cached.src + appended
-        const cachedLines = cached.src.split('\n')
-        const ctxStart = Math.max(0, cachedLines.length - ctxLines)
-        const contextPrefix = cachedLines.slice(ctxStart).join('\n')
+        const contextPrefix = this.getTailLines(cached.src, ctxLines)
         const ctxSrc = contextPrefix + appended
 
         try {
@@ -388,7 +511,8 @@ export class StreamParser {
 
       // Update cache with new src and line count
       cached.src = src
-      cached.lineCount = cachedLineCount + countLines(appended)
+      const appendedLines = appendedLineCount ?? countLines(appended)
+      cached.lineCount = cachedLineCount + appendedLines
 
       this.stats.total += 1
       this.stats.appendHits += 1
@@ -473,23 +597,26 @@ export class StreamParser {
     if (!segment)
       return null
 
-    if (!segment.includes('\n'))
-      return null
-
-    if (!segment.endsWith('\n'))
+    const segLen = segment.length
+    if (segment.charCodeAt(segLen - 1) !== 0x0A /* \n */)
       return null
 
     let newlineCount = 0
-    for (let i = 0; i < segment.length; i++) {
-      if (segment.charCodeAt(i) === 0x0A)
+    let firstLineBreak = -1
+    for (let i = 0; i < segLen; i++) {
+      if (segment.charCodeAt(i) === 0x0A) {
+        if (firstLineBreak === -1)
+          firstLineBreak = i
         newlineCount++
+        if (newlineCount >= 2)
+          break
+      }
     }
     if (newlineCount < 2)
       return null
 
     // Prevent setext heading underlines from using the fast-path since they
     // retroactively change the previous line's block type.
-    const firstLineBreak = segment.indexOf('\n')
     const firstLine = firstLineBreak === -1 ? segment : segment.slice(0, firstLineBreak)
     const trimmedFirstLine = firstLine.trim()
 
@@ -513,37 +640,66 @@ export class StreamParser {
     return segment
   }
 
+  // Get the last N lines (by newline count) without splitting the full string.
+  // Matches cached.src.split('\n').slice(-n).join('\n') semantics.
+  private getTailLines(src: string, lineCount: number): string {
+    if (lineCount <= 0)
+      return ''
+
+    let remaining = lineCount
+    for (let i = src.length - 1; i >= 0; i--) {
+      if (src.charCodeAt(i) === 0x0A /* \n */) {
+        remaining--
+        if (remaining === 0)
+          return src.slice(i + 1)
+      }
+    }
+
+    return src
+  }
+
   // Detect if the given text ends while still inside an open fenced code block.
   // Scans backwards in a bounded window for performance.
   private endsInsideOpenFence(text: string): boolean {
     const WINDOW = 4000
     const start = text.length > WINDOW ? text.length - WINDOW : 0
     const chunk = text.slice(start)
-    const lines = chunk.split('\n')
-    let inFence: { marker: '`' | '~', length: number } | null = null
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
+    const len = chunk.length
+    let inFence: { marker: number, length: number } | null = null
+    let lineStart = 0
+    while (lineStart <= len) {
+      let lineEnd = chunk.indexOf('\n', lineStart)
+      if (lineEnd === -1)
+        lineEnd = len
+
       // skip leading spaces/tabs
-      let p = 0
-      while (p < line.length) {
-        const c = line.charCodeAt(p)
+      let p = lineStart
+      while (p < lineEnd) {
+        const c = chunk.charCodeAt(p)
         if (c === 0x20 /* space */ || c === 0x09 /* tab */)
           p++
         else
           break
       }
-      const ch = line[p]
-      if (ch === '`' || ch === '~') {
-        let q = p
-        while (q < line.length && line[q] === ch) q++
-        const runLen = q - p
-        if (runLen >= 3) {
-          if (!inFence)
-            inFence = { marker: ch as '`' | '~', length: runLen }
-          else if (inFence.marker === ch && runLen >= inFence.length)
-            inFence = null
+
+      if (p < lineEnd) {
+        const ch = chunk.charCodeAt(p)
+        if (ch === 0x60 /* ` */ || ch === 0x7E /* ~ */) {
+          let q = p
+          while (q < lineEnd && chunk.charCodeAt(q) === ch) q++
+          const runLen = q - p
+          if (runLen >= 3) {
+            if (!inFence)
+              inFence = { marker: ch, length: runLen }
+            else if (inFence.marker === ch && runLen >= inFence.length)
+              inFence = null
+          }
         }
       }
+
+      if (lineEnd === len)
+        break
+      lineStart = lineEnd + 1
     }
     return inFence !== null
   }

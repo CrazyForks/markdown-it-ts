@@ -1,14 +1,16 @@
 # markdown-it-ts
 
+A TypeScript-first, markdown-it compatible Markdown parser and renderer with streaming/incremental parsing and async render.
+
 English | [简体中文](./README.zh-CN.md)
 
-[Compatibility report: `docs/COMPATIBILITY_REPORT.md`](./docs/COMPATIBILITY_REPORT.md)
+Quick links: [Docs index](./docs/README.md) · [Stream optimization](./docs/stream-optimization.md) · [Performance report](./docs/perf-report.md) · [Compatibility report](./docs/COMPATIBILITY_REPORT.md)
 
 A TypeScript migration of [markdown-it](https://github.com/markdown-it/markdown-it) with modular architecture for tree-shaking and separate parse/render imports.
 
 ## 🚀 Migration Status: 100% Complete
 
-This is an **active migration** of markdown-it to TypeScript with the following goals:
+Port from markdown-it to TypeScript is complete and maintained with the following goals:
 - ✅ Full TypeScript type safety
 - ✅ Modular architecture (separate parse/render imports)
 - ✅ Tree-shaking support
@@ -102,6 +104,14 @@ const md = withRenderer(markdownIt())
 const html = md.render('# Hello World')
 console.log(html)
 ```
+
+## Documentation
+
+- [Docs index](./docs/README.md) (architecture, plugin dev, streaming, perf)
+- [Stream optimization & chunked parsing](./docs/stream-optimization.md)
+- [Performance report](./docs/perf-report.md) and [latest run](./docs/perf-latest.md)
+- [Security notes](./docs/security.md)
+- [Compatibility report](./docs/COMPATIBILITY_REPORT.md)
 
 ## Why render with markdown-it-ts?
 
@@ -437,11 +447,11 @@ Latest one-shot parse results on this machine (Node.js v23): markdown-it-ts is r
 
 Examples from the latest run (avg over 20 iterations):
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.0002ms vs 0.3936ms → ~1967.8× faster (0.00× time)
-- 20,000 chars: 0.0002ms vs 0.9498ms → ~4651.5× faster (0.00× time)
-- 50,000 chars: 0.0004ms vs 2.1665ms → ~5842.7× faster (0.00× time)
-- 100,000 chars: 0.0004ms vs 5.0462ms → ~11915.4× faster (0.00× time)
-- 200,000 chars: 11.79ms vs 10.65ms → ~0.9× faster (1.11× time)
+- 5,000 chars: 0.0002ms vs 0.3639ms → ~1898.5× faster (0.00× time)
+- 20,000 chars: 0.0002ms vs 0.8784ms → ~3603.8× faster (0.00× time)
+- 50,000 chars: 0.0004ms vs 2.2133ms → ~5969.0× faster (0.00× time)
+- 100,000 chars: 0.0006ms vs 5.1376ms → ~8129.1× faster (0.00× time)
+- 200,000 chars: 13.65ms vs 17.81ms → ~1.3× faster (0.77× time)
 <!-- perf-auto:one-examples:end -->
 
 - Notes
@@ -455,21 +465,21 @@ We also compare parse-only performance against `remark` (parse-only). The follow
 One-shot parse (oneShotMs) — markdown-it-ts vs remark (lower is better):
 
 <!-- perf-auto:remark-one:start -->
-- 5,000 chars: 0.0002ms vs 6.2269ms → 31134.6× faster
-- 20,000 chars: 0.0002ms vs 27.38ms → 134075.5× faster
-- 50,000 chars: 0.0004ms vs 77.89ms → 210053.5× faster
-- 100,000 chars: 0.0004ms vs 173.13ms → 408806.6× faster
-- 200,000 chars: 11.79ms vs 462.07ms → 39.2× faster
+- 5,000 chars: 0.0002ms vs 5.7276ms → 29883.2× faster
+- 20,000 chars: 0.0002ms vs 25.93ms → 106359.7× faster
+- 50,000 chars: 0.0004ms vs 79.16ms → 213479.6× faster
+- 100,000 chars: 0.0006ms vs 193.36ms → 305954.2× faster
+- 200,000 chars: 13.65ms vs 420.05ms → 30.8× faster
 <!-- perf-auto:remark-one:end -->
 
 Append workload (appendWorkloadMs) — markdown-it-ts vs remark:
 
 <!-- perf-auto:remark-append:start -->
-- 5,000 chars: 0.4003ms vs 18.21ms → 45.5× faster
-- 20,000 chars: 1.7064ms vs 93.20ms → 54.6× faster
-- 50,000 chars: 4.3152ms vs 284.41ms → 65.9× faster
-- 100,000 chars: 7.9728ms vs 573.43ms → 71.9× faster
-- 200,000 chars: 26.07ms vs 1361.77ms → 52.2× faster
+- 5,000 chars: 0.3979ms vs 22.78ms → 57.3× faster
+- 20,000 chars: 1.1582ms vs 85.08ms → 73.5× faster
+- 50,000 chars: 3.0812ms vs 254.90ms → 82.7× faster
+- 100,000 chars: 6.1647ms vs 697.01ms → 113.1× faster
+- 200,000 chars: 28.54ms vs 1401.17ms → 49.1× faster
 <!-- perf-auto:remark-append:end -->
 
 ### Parse performance vs micromark
@@ -479,21 +489,21 @@ We also compare parse-only performance against `micromark` (scenario `MM1`), mea
 One-shot parse (oneShotMs) — markdown-it-ts vs micromark-based parse:
 
 <!-- perf-auto:micromark-one:start -->
-- 5,000 chars: 0.0002ms vs 5.8611ms → 29305.3× faster
-- 20,000 chars: 0.0002ms vs 24.76ms → 121233.5× faster
-- 50,000 chars: 0.0004ms vs 62.55ms → 168700.6× faster
-- 100,000 chars: 0.0004ms vs 121.10ms → 285945.5× faster
-- 200,000 chars: 11.79ms vs 228.87ms → 19.4× faster
+- 5,000 chars: 0.0002ms vs 5.2452ms → 27366.2× faster
+- 20,000 chars: 0.0002ms vs 21.71ms → 89056.7× faster
+- 50,000 chars: 0.0004ms vs 60.63ms → 163515.5× faster
+- 100,000 chars: 0.0006ms vs 118.54ms → 187564.7× faster
+- 200,000 chars: 13.65ms vs 267.65ms → 19.6× faster
 <!-- perf-auto:micromark-one:end -->
 
 Append workload (appendWorkloadMs) — markdown-it-ts vs micromark-based parse:
 
 <!-- perf-auto:micromark-append:start -->
-- 5,000 chars: 0.4003ms vs 17.09ms → 42.7× faster
-- 20,000 chars: 1.7064ms vs 83.09ms → 48.7× faster
-- 50,000 chars: 4.3152ms vs 203.91ms → 47.3× faster
-- 100,000 chars: 7.9728ms vs 394.34ms → 49.5× faster
-- 200,000 chars: 26.07ms vs 815.87ms → 31.3× faster
+- 5,000 chars: 0.3979ms vs 16.38ms → 41.2× faster
+- 20,000 chars: 1.1582ms vs 70.82ms → 61.2× faster
+- 50,000 chars: 3.0812ms vs 207.10ms → 67.2× faster
+- 100,000 chars: 6.1647ms vs 411.80ms → 66.8× faster
+- 200,000 chars: 28.54ms vs 1279.29ms → 44.8× faster
 <!-- perf-auto:micromark-append:end -->
 
 ## Parse performance vs markdown-exit
@@ -523,31 +533,31 @@ We also profile end-to-end `md.render` throughput (parse + render) across markdo
 ### vs markdown-it renderer
 
 <!-- perf-auto:render-md:start -->
-- 5,000 chars: 0.4013ms vs 0.2947ms → ~0.7× faster
-- 20,000 chars: 1.3057ms vs 1.0596ms → ~0.8× faster
-- 50,000 chars: 3.4224ms vs 2.8393ms → ~0.8× faster
-- 100,000 chars: 7.4702ms vs 6.2038ms → ~0.8× faster
-- 200,000 chars: 18.66ms vs 16.53ms → ~0.9× faster
+- 5,000 chars: 0.7986ms vs 0.3598ms → ~0.5× faster
+- 20,000 chars: 1.6156ms vs 1.3819ms → ~0.9× faster
+- 50,000 chars: 4.0051ms vs 3.7130ms → ~0.9× faster
+- 100,000 chars: 8.2731ms vs 12.47ms → ~1.5× faster
+- 200,000 chars: 19.82ms vs 17.90ms → ~0.9× faster
 <!-- perf-auto:render-md:end -->
 
 ### vs remark + rehype renderer
 
 <!-- perf-auto:render-remark:start -->
-- 5,000 chars: 0.4013ms vs 7.1699ms → ~17.9× faster
-- 20,000 chars: 1.3057ms vs 35.70ms → ~27.3× faster
-- 50,000 chars: 3.4224ms vs 89.82ms → ~26.2× faster
-- 100,000 chars: 7.4702ms vs 189.36ms → ~25.3× faster
-- 200,000 chars: 18.66ms vs 470.58ms → ~25.2× faster
+- 5,000 chars: 0.7986ms vs 8.6005ms → ~10.8× faster
+- 20,000 chars: 1.6156ms vs 53.85ms → ~33.3× faster
+- 50,000 chars: 4.0051ms vs 93.52ms → ~23.3× faster
+- 100,000 chars: 8.2731ms vs 256.76ms → ~31.0× faster
+- 200,000 chars: 19.82ms vs 454.49ms → ~22.9× faster
 <!-- perf-auto:render-remark:end -->
 
 ### vs micromark (CommonMark reference)
 
 <!-- perf-auto:render-micromark:start -->
-- 5,000 chars: 0.4013ms vs 6.0247ms → ~15.0× faster
-- 20,000 chars: 1.3057ms vs 32.12ms → ~24.6× faster
-- 50,000 chars: 3.4224ms vs 80.69ms → ~23.6× faster
-- 100,000 chars: 7.4702ms vs 137.53ms → ~18.4× faster
-- 200,000 chars: 18.66ms vs 273.06ms → ~14.6× faster
+- 5,000 chars: 0.7986ms vs 7.2509ms → ~9.1× faster
+- 20,000 chars: 1.6156ms vs 44.40ms → ~27.5× faster
+- 50,000 chars: 4.0051ms vs 80.38ms → ~20.1× faster
+- 100,000 chars: 8.2731ms vs 173.34ms → ~21.0× faster
+- 200,000 chars: 19.82ms vs 298.09ms → ~15.0× faster
 <!-- perf-auto:render-micromark:end -->
 
 Reproduce locally

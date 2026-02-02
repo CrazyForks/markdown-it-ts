@@ -1,6 +1,5 @@
 import type { State } from '../../parse/state'
 import { Token } from '../../common/token'
-import { arrayReplaceAt } from '../../common/utils'
 
 function isLinkOpen(str: string): boolean {
   return /^<a[>\s]/i.test(str)
@@ -24,7 +23,11 @@ export function linkify(state: State): void {
       continue
     }
 
-    let tokens = blockToken.children || []
+    let tokens = blockToken.children
+    if (!tokens) {
+      tokens = []
+      blockToken.children = tokens
+    }
     let htmlLinkLevel = 0
 
     for (let i = tokens.length - 1; i >= 0; i--) {
@@ -136,7 +139,8 @@ export function linkify(state: State): void {
         nodes.push(textToken)
       }
 
-      blockToken.children = tokens = arrayReplaceAt(tokens, i, nodes)
+      // Replace in-place to avoid allocating a new array for each match.
+      tokens.splice(i, 1, ...nodes)
     }
   }
 }

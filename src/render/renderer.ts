@@ -148,23 +148,24 @@ export class Renderer {
 
     const merged = this.mergeOptions(options)
     const envRef = env ?? {}
-    let output = ''
+    const rules = this.rules
+    const out = new Array<string>(tokens.length)
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]
       if (token.type === 'inline') {
-        output += this.renderInlineTokens(token.children || [], merged, envRef)
+        out[i] = this.renderInlineTokens(token.children || [], merged, envRef)
         continue
       }
 
-      const rule = this.rules[token.type]
+      const rule = rules[token.type]
       if (rule)
-        output += ensureSyncResult(rule(tokens, i, merged, envRef, this), token.type)
+        out[i] = ensureSyncResult(rule(tokens, i, merged, envRef, this), token.type)
       else
-        output += this.renderToken(tokens, i, merged)
+        out[i] = this.renderToken(tokens, i, merged)
     }
 
-    return output
+    return out.join('')
   }
 
   public async renderAsync(tokens: Token[], options?: RendererOptions, env?: RendererEnv): Promise<string> {
@@ -173,23 +174,24 @@ export class Renderer {
 
     const merged = this.mergeOptions(options)
     const envRef = env ?? {}
-    let output = ''
+    const rules = this.rules
+    const out = new Array<string>(tokens.length)
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]
       if (token.type === 'inline') {
-        output += await this.renderInlineTokensAsync(token.children || [], merged, envRef)
+        out[i] = await this.renderInlineTokensAsync(token.children || [], merged, envRef)
         continue
       }
 
-      const rule = this.rules[token.type]
+      const rule = rules[token.type]
       if (rule)
-        output += await resolveResult(rule(tokens, i, merged, envRef, this))
+        out[i] = await resolveResult(rule(tokens, i, merged, envRef, this))
       else
-        output += this.renderToken(tokens, i, merged)
+        out[i] = this.renderToken(tokens, i, merged)
     }
 
-    return output
+    return out.join('')
   }
 
   public renderInline(tokens: Token[], options?: RendererOptions, env?: RendererEnv): string {
@@ -301,32 +303,34 @@ export class Renderer {
     if (!tokens || tokens.length === 0)
       return ''
 
-    let output = ''
+    const rules = this.rules
+    const out = new Array<string>(tokens.length)
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]
-      const rule = this.rules[token.type]
+      const rule = rules[token.type]
       if (rule)
-        output += ensureSyncResult(rule(tokens, i, options, env, this), token.type)
+        out[i] = ensureSyncResult(rule(tokens, i, options, env, this), token.type)
       else
-        output += this.renderToken(tokens, i, options)
+        out[i] = this.renderToken(tokens, i, options)
     }
-    return output
+    return out.join('')
   }
 
   private async renderInlineTokensAsync(tokens: Token[], options: RendererOptions, env: RendererEnv): Promise<string> {
     if (!tokens || tokens.length === 0)
       return ''
 
-    let output = ''
+    const rules = this.rules
+    const out = new Array<string>(tokens.length)
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]
-      const rule = this.rules[token.type]
+      const rule = rules[token.type]
       if (rule)
-        output += await resolveResult(rule(tokens, i, options, env, this))
+        out[i] = await resolveResult(rule(tokens, i, options, env, this))
       else
-        output += this.renderToken(tokens, i, options)
+        out[i] = this.renderToken(tokens, i, options)
     }
-    return output
+    return out.join('')
   }
 
   private renderInlineAsTextInternal(tokens: Token[], options: RendererOptions, env: RendererEnv): string {

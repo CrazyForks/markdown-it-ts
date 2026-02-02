@@ -59,8 +59,10 @@ export class ParserInline {
     const posMax = state.posMax
     const maxNesting = state.md?.options?.maxNesting || 100
 
-    if (typeof state.cache[pos] !== 'undefined') {
-      state.pos = state.cache[pos]
+    const cache = state.cache
+    const cached = cache[pos]
+    if (cached !== undefined) {
+      state.pos = cached
       return
     }
 
@@ -100,7 +102,7 @@ export class ParserInline {
     if (!ok)
       state.pos++
 
-    state.cache[pos] = state.pos
+    cache[pos] = state.pos
   }
 
   /**

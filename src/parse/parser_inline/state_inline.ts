@@ -16,7 +16,7 @@ export class StateInline {
   public level: number
   public pending: string
   public pendingLevel: number
-  public cache: Record<number, number>
+  public cache: Array<number | undefined>
   public delimiters: any[]
   public _prev_delimiters: any[] // Stack of delimiter lists for upper level tags
   public backticks: Record<number, number>
@@ -36,7 +36,7 @@ export class StateInline {
     this.level = 0
     this.pending = ''
     this.pendingLevel = 0
-    this.cache = {}
+    this.cache = []
     this.delimiters = []
     this._prev_delimiters = []
     this.backticks = {}
