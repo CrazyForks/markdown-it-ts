@@ -88,7 +88,6 @@ function main() {
 
   console.log('Perf comparison vs baseline')
   console.log('Threshold for regression: +' + fmtPct(threshold))
-  console.log(`Checked markdown-it-ts scenarios only (checked=${checkedMetrics}, skipped=${skippedMetrics}, minSignalMs=${minSignalMs}, appendMinSignalMs=${appendMinSignalMs})`)
   console.log('| Size | Scenario | One Δ | Append Δ |')
   console.log('|---:|:--|--:|--:|')
   for (const r of rows) {
@@ -132,6 +131,8 @@ function main() {
       console.log(`| ${r.size} | ${r.scenario} | ${render}${r.regRender ? ' (!) ' : ' '}|`)
     }
   }
+
+  console.log(`Checked markdown-it-ts scenarios only (checked=${checkedMetrics}, skipped=${skippedMetrics}, minSignalMs=${minSignalMs}, appendMinSignalMs=${appendMinSignalMs})`)
 
   if (regressions) {
     console.error(`Detected ${regressions} regression(s) exceeding threshold.`)

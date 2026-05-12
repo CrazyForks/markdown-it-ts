@@ -57,5 +57,8 @@ jobs:
       - name: Generate perf snapshot (head)
         run: pnpm -C head run perf:generate
 
+      - name: Run parser perf threshold tests (head)
+        run: pnpm -C head run test:perf-threshold
+
       - name: Compare perf snapshots
-        run: node head/scripts/perf-compare.mjs head/docs/perf-latest.json base/docs/perf-latest.json --threshold=0.20
+        run: node head/scripts/perf-compare.mjs head/docs/perf-latest.json base/docs/perf-latest.json --threshold=0.10 --min-signal-ms=0.05 --append-min-signal-ms=3
