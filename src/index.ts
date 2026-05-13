@@ -174,6 +174,26 @@ function hasExplicitOption(
     || (!!presetOptions && Object.prototype.hasOwnProperty.call(presetOptions, key))
 }
 
+function setFullChunkStrategyDiagnostics(env: Record<string, unknown>, reason: string): void {
+  const chunkInfo = (env as any).__mdtsChunkInfo
+
+  if (chunkInfo?.fallback) {
+    setStrategyDiagnostics(env, {
+      area: 'parse',
+      path: 'plain',
+      reason: `global-state:${chunkInfo.fallbackReason || 'unknown'}`,
+    })
+    return
+  }
+
+  setStrategyDiagnostics(env, {
+    area: 'parse',
+    path: 'full-chunk',
+    chunked: true,
+    reason,
+  })
+}
+
 function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownItOptions): MarkdownIt {
   // defaults (core-only)
   let opts: MarkdownItOptions = {
@@ -498,18 +518,13 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
 
           if (useChunked) {
             if (autoRecommendation && autoRecommendation.strategy !== 'plain') {
-              setStrategyDiagnostics(env, {
-                area: 'parse',
-                path: 'full-chunk',
-                chunked: true,
-                reason: wantsChunking ? 'explicit-full-chunk' : 'default-large-string',
-              })
               const tokens = chunkedParse(this, src, env, {
                 maxChunkChars: autoRecommendation.maxChunkChars,
                 maxChunkLines: autoRecommendation.maxChunkLines,
                 fenceAware: autoRecommendation.fenceAware,
                 maxChunks: autoRecommendation.maxChunks,
               })
+              setFullChunkStrategyDiagnostics(env, wantsChunking ? 'explicit-full-chunk' : 'default-large-string')
               return tokens
             }
 
@@ -525,18 +540,14 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
                 ? clamp(Math.ceil(chars / 64_000), target, 32)
                 : this.options.fullChunkMaxChunks
 
-              setStrategyDiagnostics(env, {
-                area: 'parse',
-                path: 'full-chunk',
-                chunked: true,
-                reason: 'explicit-full-chunk',
-              })
-              return chunkedParse(this, src, env, {
+              const tokens = chunkedParse(this, src, env, {
                 maxChunkChars,
                 maxChunkLines,
                 fenceAware: this.options.fullChunkFenceAware ?? true,
                 maxChunks,
               })
+              setFullChunkStrategyDiagnostics(env, 'explicit-full-chunk')
+              return tokens
             }
           }
         }

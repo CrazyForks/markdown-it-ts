@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import markdownit, { chunkedParse } from '../../src/index'
+import { parse, parseInline } from '../../src/parse'
 import { parseStringUnbounded } from '../../src/stream/unbounded'
+
+function hasLinkOpen(tokens: any[]): boolean {
+  const inline = tokens.find(token => token.type === 'inline')
+  return !!inline?.children?.some((child: any) => child.type === 'link_open')
+}
 
 describe('global markdown state env cleanup across APIs', () => {
   it('marks plain render definitions so the next plain render can clear them', () => {
@@ -140,5 +146,25 @@ describe('global markdown state env cleanup across APIs', () => {
 
     expect(html).toBe(md.renderInline('[x][ref]'))
     expect(html).not.toContain('https://old.example')
+  })
+
+  it('clears standalone parse references before standalone parseInline', () => {
+    const env: Record<string, unknown> = {}
+
+    parse('[x][ref]\n\n[ref]: https://old.example\n', env)
+
+    const tokens = parseInline('[x][ref]', env)
+
+    expect(hasLinkOpen(tokens)).toBe(false)
+  })
+
+  it('clears standalone parse references before next standalone parse', () => {
+    const env: Record<string, unknown> = {}
+
+    parse('[x][ref]\n\n[ref]: https://old.example\n', env)
+
+    const tokens = parse('[x][ref]\n', env)
+
+    expect(hasLinkOpen(tokens)).toBe(false)
   })
 })

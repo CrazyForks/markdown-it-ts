@@ -20,6 +20,19 @@ function buildHugeDoc(targetChars: number) {
   return s
 }
 
+function expectGlobalStateFallbackDiagnostics(env: Record<string, unknown>) {
+  expect((env as any).__mdtsChunkInfo).toMatchObject({
+    fallback: true,
+    fallbackReason: 'reference-definition',
+  })
+  expect((env as any).__mdtsStrategyInfo).toMatchObject({
+    area: 'parse',
+    path: 'plain',
+    reason: 'global-state:reference-definition',
+  })
+  expect((env as any).__mdtsStrategyInfo?.chunked).toBeUndefined()
+}
+
 describe('full parse: chunked fallback correctness', () => {
   it('uses chunked for large docs when enabled (char threshold)', () => {
     const md = MarkdownIt({
@@ -104,5 +117,33 @@ describe('full parse: chunked fallback correctness', () => {
     expect((env as any).__mdtsChunkInfo?.maxChunkChars).toBe(64_000)
     expect((env as any).__mdtsChunkInfo?.maxChunkLines).toBe(700)
     expect((env as any).__mdtsChunkInfo?.count).toBe(16)
+  })
+
+  it('reports plain diagnostics when auto-tuned full chunk falls back for global state', () => {
+    const md = MarkdownIt({
+      stream: false,
+      fullChunkedFallback: true,
+      fullChunkThresholdChars: 0,
+    })
+    const env: Record<string, unknown> = {}
+
+    md.parse('[x][ref]\n\n[ref]: https://old.example\n', env)
+
+    expectGlobalStateFallbackDiagnostics(env)
+  })
+
+  it('reports plain diagnostics when explicit full chunk falls back for global state', () => {
+    const md = MarkdownIt({
+      stream: false,
+      fullChunkedFallback: true,
+      fullChunkThresholdChars: 0,
+      fullChunkSizeChars: 5000,
+      fullChunkSizeLines: 150,
+    })
+    const env: Record<string, unknown> = {}
+
+    md.parse('[x][ref]\n\n[ref]: https://old.example\n', env)
+
+    expectGlobalStateFallbackDiagnostics(env)
   })
 })

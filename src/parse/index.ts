@@ -1,3 +1,10 @@
+import {
+  detectGlobalMarkdownState,
+  finalizeKnownGlobalMarkdownState,
+  getKnownGlobalMarkdownState,
+  markKnownGlobalMarkdownState,
+  resetKnownGlobalMarkdownState,
+} from './global_state'
 import { ParserCore as ParserCoreClass } from './parser_core'
 
 export { ParserBlock } from './parser_block'
@@ -17,10 +24,32 @@ function getSharedCore(): ParserCoreClass {
   return sharedCore
 }
 
+function prepareGlobalState(src: string, env: Record<string, unknown>) {
+  if (getKnownGlobalMarkdownState(env))
+    resetKnownGlobalMarkdownState(env)
+
+  const reason = detectGlobalMarkdownState(src)
+  if (reason)
+    markKnownGlobalMarkdownState(env, reason)
+
+  return reason
+}
+
 export function parse(src: string, env: Record<string, unknown> = {}) {
   const core = getSharedCore()
-  const state = core.parse(src, env)
-  return state.tokens
+  const reason = prepareGlobalState(src, env)
+
+  try {
+    const state = core.parse(src, env)
+    if (reason)
+      finalizeKnownGlobalMarkdownState(env)
+    return state.tokens
+  }
+  catch (error) {
+    if (reason)
+      resetKnownGlobalMarkdownState(env)
+    throw error
+  }
 }
 
 /**
@@ -29,6 +58,8 @@ export function parse(src: string, env: Record<string, unknown> = {}) {
  */
 export function parseInline(src: string, env: Record<string, unknown> = {}) {
   const core = getSharedCore()
+  if (getKnownGlobalMarkdownState(env))
+    resetKnownGlobalMarkdownState(env)
   const state = core.createState(src, env)
   // enable inline-only mode so process() produces a single `inline` token
   state.inlineMode = true
