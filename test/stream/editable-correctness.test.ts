@@ -177,4 +177,21 @@ describe('EditableBuffer correctness fallback', () => {
     expect(html).toBe(md.render('[x][ref]\n'))
     expect(html).not.toContain('https://old.example')
   })
+
+  it('clears multiline reference definitions detected through piece-table chunks', () => {
+    const md = markdownit()
+    const env: Record<string, unknown> = {}
+    const buffer = new EditableBuffer(md, '[x][foo bar]\n\n[foo\n')
+
+    buffer.append('bar]: https://old.example\n\n', env)
+    buffer.parse(env)
+
+    buffer.reset('[x][foo bar]\n')
+    buffer.parse(env)
+
+    const html = md.renderer.render(buffer.peek(), md.options, env)
+
+    expect(html).toBe(md.render('[x][foo bar]\n'))
+    expect(html).not.toContain('https://old.example')
+  })
 })

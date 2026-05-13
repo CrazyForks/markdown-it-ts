@@ -8,6 +8,20 @@ describe('global markdown state detection', () => {
       .toBe('reference-definition')
   })
 
+  it('detects multiline reference labels split across chunks', () => {
+    expect(detectGlobalMarkdownStateFromChunks([
+      '[foo\n',
+      'bar]: https://example.com\n',
+    ])).toBe('reference-definition')
+  })
+
+  it('detects multiline reference destinations split across chunks', () => {
+    expect(detectGlobalMarkdownStateFromChunks([
+      '[ref]:\n',
+      '  https://example.com\n',
+    ])).toBe('reference-definition')
+  })
+
   it('matches parser behavior for multiline reference labels', () => {
     const src = '[foo\nbar]: https://example.com\n'
     const md = markdownit()

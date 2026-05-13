@@ -3,6 +3,7 @@ export type GlobalMarkdownStateReason = 'reference-definition' | 'footnote-defin
 const FOOTNOTE_DEF_RE = /(?:^|\n)[ \t]{0,3}\[\^[^\]\n]+\]:/m
 const ABBR_DEF_RE = /(?:^|\n)[ \t]{0,3}\*\[[^\]\n]+\]:/m
 const REFERENCE_DEF_RE = /(?:^|\n)[ \t]{0,3}\[(?!\^)(?:\\[\s\S]|[^\]\\[])+\][ \t]*:/m
+const GLOBAL_STATE_CHUNK_SCAN_WINDOW = 4096
 const GLOBAL_STATE_ENV_KEYS = [
   'references',
   'footnotes',
@@ -125,19 +126,13 @@ export function detectGlobalMarkdownStateFromChunks(
       continue
 
     const text = carry + chunk
-    const lastNewline = text.lastIndexOf('\n')
-
-    if (lastNewline < 0) {
-      carry = text
-      continue
-    }
-
-    const completeLines = text.slice(0, lastNewline + 1)
-    const reason = detectGlobalMarkdownState(completeLines)
+    const reason = detectGlobalMarkdownState(text)
     if (reason)
       return reason
 
-    carry = text.slice(lastNewline + 1)
+    carry = text.length > GLOBAL_STATE_CHUNK_SCAN_WINDOW
+      ? text.slice(text.length - GLOBAL_STATE_CHUNK_SCAN_WINDOW)
+      : text
   }
 
   return detectGlobalMarkdownState(carry)
