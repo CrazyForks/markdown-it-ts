@@ -136,6 +136,41 @@ describe('stream parser', () => {
     expect(streamHtml).toEqual(baselineHtml)
   })
 
+  it('falls back to full parse when an append introduces a reference definition', () => {
+    const md = MarkdownIt({ stream: true })
+    const before = '[x][ref]\n\n'
+    const after = `${before}[ref]: https://example.com\n\n`
+
+    md.stream.parse(before)
+    const tokens = md.stream.parse(after)
+    const html = md.renderer.render(tokens, md.options, {})
+
+    expect(html).toBe(md.render(after))
+    expect(html).toContain('href="https://example.com"')
+    expect(md.stream.stats().lastMode).toBe('full')
+  })
+
+  it('refreshes reference definitions when stream full fallback reuses env', () => {
+    const md = MarkdownIt({ stream: true })
+    const env: Record<string, unknown> = {}
+    const oldSrc = [
+      '[x][ref]',
+      '',
+      '[ref]: https://old.example',
+      '',
+    ].join('\n')
+    const newSrc = oldSrc.replace('old.example', 'new.example')
+
+    md.stream.parse(oldSrc, env)
+    const tokens = md.stream.parse(newSrc, env)
+    const html = md.renderer.render(tokens, md.options, env)
+
+    expect(html).toBe(md.render(newSrc))
+    expect(html).toContain('href="https://new.example"')
+    expect(html).not.toContain('https://old.example')
+    expect(md.stream.stats().lastMode).toBe('full')
+  })
+
   it('falls back when extending content on the same line', () => {
     const md = MarkdownIt({ stream: true })
     md.stream.resetStats()

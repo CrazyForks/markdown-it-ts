@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import markdownit, { chunkedParse } from '../../src/index'
+import abbr from 'markdown-it-abbr'
+import footnote from 'markdown-it-footnote'
 
 function renderChunked(src: string, opts: Parameters<typeof chunkedParse>[3] = {}) {
   const md = markdownit()
@@ -75,6 +77,76 @@ describe('chunkedParse correctness', () => {
     expect((result.env as any).__mdtsChunkInfo).toMatchObject({
       fallback: true,
       fallbackReason: 'reference-definition',
+    })
+  })
+
+  it('refreshes reference definitions when reusing the same env object', () => {
+    const md = markdownit()
+    const env: Record<string, unknown> = {}
+    const oldSrc = [
+      '[x][ref]',
+      '',
+      '[ref]: https://old.example',
+      '',
+    ].join('\n')
+    const newSrc = oldSrc.replace('old.example', 'new.example')
+
+    chunkedParse(md, oldSrc, env, {
+      maxChunkChars: 20,
+      maxChunkLines: 2,
+    })
+    const tokens = chunkedParse(md, newSrc, env, {
+      maxChunkChars: 20,
+      maxChunkLines: 2,
+    })
+    const html = md.renderer.render(tokens, md.options, env)
+
+    expect(html).toBe(md.render(newSrc))
+    expect(html).toContain('href="https://new.example"')
+    expect(html).not.toContain('https://old.example')
+  })
+
+  it('falls back to full parse for footnote definitions', () => {
+    const md = markdownit().use(footnote as any)
+    const env: Record<string, unknown> = {}
+    const src = [
+      'hello[^a]',
+      '',
+      '[^a]: world',
+      '',
+    ].join('\n')
+
+    const tokens = chunkedParse(md, src, env, {
+      maxChunkChars: 10,
+      maxChunkLines: 1,
+    })
+
+    expect(md.renderer.render(tokens, md.options, env)).toBe(md.render(src))
+    expect((env as any).__mdtsChunkInfo).toMatchObject({
+      fallback: true,
+      fallbackReason: 'footnote-definition',
+    })
+  })
+
+  it('falls back to full parse for abbreviation definitions', () => {
+    const md = markdownit().use(abbr as any)
+    const env: Record<string, unknown> = {}
+    const src = [
+      '*[HTML]: Hyper Text Markup Language',
+      '',
+      'HTML',
+      '',
+    ].join('\n')
+
+    const tokens = chunkedParse(md, src, env, {
+      maxChunkChars: 10,
+      maxChunkLines: 1,
+    })
+
+    expect(md.renderer.render(tokens, md.options, env)).toBe(md.render(src))
+    expect((env as any).__mdtsChunkInfo).toMatchObject({
+      fallback: true,
+      fallbackReason: 'abbreviation-definition',
     })
   })
 

@@ -77,4 +77,28 @@ describe('EditableBuffer correctness fallback', () => {
       fallbackReason: 'reference-definition',
     })
   })
+
+  it('refreshes reference definitions when reusing the same env object', () => {
+    const md = markdownit()
+    const src = [
+      '[x][ref]',
+      '',
+      '[ref]: https://old.example',
+      '',
+    ].join('\n')
+
+    const buffer = new EditableBuffer(md, src)
+    const env: Record<string, unknown> = {}
+
+    buffer.parse(env)
+
+    const start = buffer.toString().indexOf('old.example')
+    buffer.replace(start, start + 'old.example'.length, 'new.example', env)
+
+    const html = md.renderer.render(buffer.peek(), md.options, env)
+
+    expect(html).toBe(md.render(buffer.toString()))
+    expect(html).toContain('href="https://new.example"')
+    expect(html).not.toContain('https://old.example')
+  })
 })

@@ -1,6 +1,6 @@
 import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
-import { detectGlobalMarkdownState } from '../parse/global_state'
+import { detectGlobalMarkdownState, resetKnownGlobalMarkdownState } from '../parse/global_state'
 
 export interface ChunkedOptions {
   maxChunkChars?: number // hard limit per chunk by characters
@@ -50,6 +50,7 @@ export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, un
       }
       catch {}
 
+      resetKnownGlobalMarkdownState(env)
       return md.core.parse(src, env, md).tokens
     }
   }

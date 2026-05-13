@@ -23,3 +23,11 @@ export function detectGlobalMarkdownState(src: string): GlobalMarkdownStateReaso
 export function hasGlobalMarkdownState(src: string): boolean {
   return detectGlobalMarkdownState(src) !== null
 }
+
+export function resetKnownGlobalMarkdownState(env: Record<string, unknown>): void {
+  delete (env as any).references
+  delete (env as any).footnotes
+  delete (env as any).abbreviations
+  delete (env as any).abbr
+  delete (env as any).abbrs
+}

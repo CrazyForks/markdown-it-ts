@@ -56,4 +56,30 @@ describe('parseStringUnbounded correctness', () => {
       fallbackReason: 'reference-definition',
     })
   })
+
+  it('refreshes reference definitions when reusing the same env object', () => {
+    const md = markdownit()
+    const env: Record<string, unknown> = {}
+    const oldSrc = [
+      '[x][ref]',
+      '',
+      '[ref]: https://old.example',
+      '',
+    ].join('\n')
+    const newSrc = oldSrc.replace('old.example', 'new.example')
+
+    parseStringUnbounded(md, oldSrc, env, {
+      maxChunkChars: 20,
+      maxChunkLines: 2,
+    })
+    const tokens = parseStringUnbounded(md, newSrc, env, {
+      maxChunkChars: 20,
+      maxChunkLines: 2,
+    })
+    const html = md.renderer.render(tokens, md.options, env)
+
+    expect(html).toBe(md.render(newSrc))
+    expect(html).toContain('href="https://new.example"')
+    expect(html).not.toContain('https://old.example')
+  })
 })

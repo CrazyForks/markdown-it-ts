@@ -1,7 +1,7 @@
 import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
 import { countLines } from '../common/utils'
-import { detectGlobalMarkdownState } from '../parse/global_state'
+import { detectGlobalMarkdownState, resetKnownGlobalMarkdownState } from '../parse/global_state'
 import { splitIntoChunkRanges } from './chunked'
 
 export interface UnboundedBufferOptions {
@@ -542,6 +542,7 @@ export function parseStringUnbounded(
       }
       catch {}
 
+      resetKnownGlobalMarkdownState(env)
       return md.core.parse(src, env, md).tokens
     }
   }

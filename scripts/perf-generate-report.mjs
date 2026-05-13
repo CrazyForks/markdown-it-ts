@@ -26,6 +26,26 @@ function getGitCommit() {
   }
 }
 
+function getGitDirty() {
+  try {
+    execSync('git diff --quiet', { stdio: 'ignore' })
+    execSync('git diff --cached --quiet', { stdio: 'ignore' })
+    return false
+  }
+  catch {
+    return true
+  }
+}
+
+function getGitTreeHash() {
+  try {
+    return execSync('git write-tree', { encoding: 'utf8' }).trim()
+  }
+  catch {
+    return 'unknown'
+  }
+}
+
 function getPerfMetadata() {
   const cpus = os.cpus() || []
   return {
@@ -36,6 +56,8 @@ function getPerfMetadata() {
     cpu: cpus[0]?.model || 'unknown',
     cpuCount: cpus.length,
     commit: getGitCommit(),
+    dirty: getGitDirty(),
+    tree: getGitTreeHash(),
     sizes: SIZES,
     appendSteps: APP_STEPS,
   }
