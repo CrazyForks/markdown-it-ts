@@ -45,6 +45,7 @@ jobs:
           CI: true
 
       - name: Build
+        if: matrix.node == 20
         run: pnpm run build
 
       - name: Pack package
