@@ -1,8 +1,6 @@
 name: Perf Regression
 
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       base_ref:
@@ -22,14 +20,14 @@ jobs:
       - name: Checkout base
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref || 'main' }}
+          ref: ${{ inputs.base_ref || 'main' }}
           path: base
           fetch-depth: 0
 
       - name: Checkout head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
+          ref: ${{ inputs.head_ref || github.sha }}
           path: head
           fetch-depth: 0
 

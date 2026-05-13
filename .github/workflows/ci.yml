@@ -44,6 +44,18 @@ jobs:
         env:
           CI: true
 
+      - name: Slow stream correctness test
+        if: matrix.node == 20
+        run: pnpm run test:stream:slow
+        env:
+          CI: true
+
+      - name: Parser performance threshold
+        if: matrix.node == 20
+        run: pnpm run test:perf-threshold
+        env:
+          CI: true
+
       - name: Build
         if: matrix.node == 20
         run: pnpm run build
