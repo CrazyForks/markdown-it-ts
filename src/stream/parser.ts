@@ -169,15 +169,10 @@ export class StreamParser {
           })
           this.cache = { src, tokens, env: workingEnv, lineCount: srcLineCount, lastSegment: undefined, globalStateReason: detectGlobalMarkdownState(src) }
           this.updateCacheLineCount(this.cache, srcLineCount)
-          this.stats.total += 1
-          this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
-          this.stats.lastMode = 'chunked'
-          setStrategyDiagnostics(workingEnv, {
-            area: 'stream',
-            path: 'stream-chunked',
-            chunked: true,
-            reason: wantsChunking ? 'explicit-initial-large-doc' : 'default-initial-large-doc',
-          })
+          this.recordChunkedParseResult(
+            workingEnv,
+            wantsChunking ? 'explicit-initial-large-doc' : 'default-initial-large-doc',
+          )
           return tokens
         }
       }
@@ -680,15 +675,10 @@ export class StreamParser {
         })
         this.cache = { src, tokens, env: fallbackEnv, lineCount: srcLineCount2, lastSegment: undefined, globalStateReason: detectGlobalMarkdownState(src) }
         this.updateCacheLineCount(this.cache, srcLineCount2)
-        this.stats.total += 1
-        this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
-        this.stats.lastMode = 'chunked'
-        setStrategyDiagnostics(fallbackEnv, {
-          area: 'stream',
-          path: 'stream-chunked',
-          chunked: true,
-          reason: wantsChunking ? 'explicit-fallback-large-doc' : 'default-fallback-large-doc',
-        })
+        this.recordChunkedParseResult(
+          fallbackEnv,
+          wantsChunking ? 'explicit-fallback-large-doc' : 'default-fallback-large-doc',
+        )
         return tokens
       }
     }
@@ -704,6 +694,42 @@ export class StreamParser {
     this.stats.lastMode = 'full'
     setStrategyDiagnostics(fallbackEnv, { area: 'stream', path: 'stream-full', reason: 'fallback-full', unbounded: !!(fallbackEnv as any).__mdtsUnboundedInfo })
     return nextTokens
+  }
+
+  private recordChunkedParseResult(
+    env: Record<string, unknown>,
+    chunkReason: string,
+  ): void {
+    const chunkInfo = (env as any).__mdtsChunkInfo
+    const fallbackReason = chunkInfo?.fallback
+      ? String(chunkInfo.fallbackReason || 'global-state')
+      : null
+
+    this.stats.total += 1
+
+    if (fallbackReason) {
+      this.stats.fullParses += 1
+      this.stats.lastMode = 'full'
+
+      setStrategyDiagnostics(env, {
+        area: 'stream',
+        path: 'stream-full',
+        reason: `global-state:${fallbackReason}`,
+        unbounded: !!(env as any).__mdtsUnboundedInfo,
+      })
+
+      return
+    }
+
+    this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
+    this.stats.lastMode = 'chunked'
+
+    setStrategyDiagnostics(env, {
+      area: 'stream',
+      path: 'stream-chunked',
+      chunked: true,
+      reason: chunkReason,
+    })
   }
 
   private parseFullDocument(

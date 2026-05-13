@@ -80,6 +80,28 @@ describe('chunkedParse correctness', () => {
     })
   })
 
+  it('falls back to full parse for multiline reference definitions', () => {
+    const src = [
+      '[x][ref]',
+      '',
+      '[ref]:',
+      '  https://example.com',
+      '',
+    ].join('\n')
+
+    const result = renderChunked(src, {
+      maxChunkChars: 8,
+      maxChunkLines: 1,
+    })
+
+    expect(result.html).toBe(result.full)
+    expect(result.html).toContain('href="https://example.com"')
+    expect((result.env as any).__mdtsChunkInfo).toMatchObject({
+      fallback: true,
+      fallbackReason: 'reference-definition',
+    })
+  })
+
   it('refreshes reference definitions when reusing the same env object', () => {
     const md = markdownit()
     const env: Record<string, unknown> = {}

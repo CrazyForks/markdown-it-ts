@@ -20,6 +20,25 @@ describe('EditableBuffer correctness fallback', () => {
     })
   })
 
+  it('falls back to full parse when inserting multiline reference definitions', () => {
+    const md = markdownit()
+    const buffer = new EditableBuffer(md, '[x][ref]\n\nplain\n')
+    const env: Record<string, unknown> = {}
+
+    buffer.parse()
+    buffer.append('\n[ref]:\n  https://example.com\n', env)
+
+    const html = md.renderer.render(buffer.peek(), md.options, env)
+
+    expect(html).toBe(md.render(buffer.toString()))
+    expect(html).toContain('href="https://example.com"')
+    expect(buffer.stats().lastMode).toBe('full')
+    expect((env as any).__mdtsEditableInfo).toMatchObject({
+      fallback: true,
+      fallbackReason: 'reference-definition',
+    })
+  })
+
   it('falls back to full parse when editing inside an existing reference definition line', () => {
     const md = markdownit()
     const src = [

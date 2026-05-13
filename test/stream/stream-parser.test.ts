@@ -150,6 +150,54 @@ describe('stream parser', () => {
     expect(md.stream.stats().lastMode).toBe('full')
   })
 
+  it('falls back to full parse when append introduces a multiline reference definition', () => {
+    const md = MarkdownIt({ stream: true })
+    const before = '[x][ref]\n\n'
+    const after = `${before}[ref]:\n  https://example.com\n\n`
+
+    md.stream.parse(before)
+    const tokens = md.stream.parse(after)
+    const html = md.renderer.render(tokens, md.options, {})
+
+    expect(html).toBe(md.render(after))
+    expect(html).toContain('href="https://example.com"')
+    expect(md.stream.stats().lastMode).toBe('full')
+  })
+
+  it('reports full mode when initial chunked parse falls back on global state', () => {
+    const md = MarkdownIt({
+      stream: true,
+      streamChunkedFallback: true,
+      streamChunkAdaptive: false,
+      streamChunkSizeChars: 8,
+      streamChunkSizeLines: 1,
+    })
+
+    const env: Record<string, unknown> = {}
+
+    const src = [
+      '[x][ref]',
+      '',
+      '[ref]: https://example.com',
+      '',
+    ].join('\n')
+
+    const tokens = md.stream.parse(src, env)
+    const html = md.renderer.render(tokens, md.options, env)
+
+    expect(html).toBe(md.render(src))
+    expect((env as any).__mdtsChunkInfo).toMatchObject({
+      fallback: true,
+      fallbackReason: 'reference-definition',
+    })
+    expect(md.stream.stats().lastMode).toBe('full')
+    expect(md.stream.stats().fullParses).toBeGreaterThan(0)
+    expect((env as any).__mdtsStrategyInfo).toMatchObject({
+      path: 'stream-full',
+      reason: 'global-state:reference-definition',
+    })
+  })
+
   it('refreshes reference definitions when stream full fallback reuses env', () => {
     const md = MarkdownIt({ stream: true })
     const env: Record<string, unknown> = {}

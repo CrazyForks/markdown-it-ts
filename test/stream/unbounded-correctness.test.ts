@@ -57,6 +57,33 @@ describe('parseStringUnbounded correctness', () => {
     })
   })
 
+  it('falls back to full parse for multiline reference definitions', () => {
+    const md = markdownit()
+    const env: Record<string, unknown> = {}
+
+    const src = [
+      '[x][ref]',
+      '',
+      '[ref]:',
+      '  https://example.com',
+      '',
+    ].join('\n')
+
+    const tokens = parseStringUnbounded(md, src, env, {
+      maxChunkChars: 8,
+      maxChunkLines: 1,
+    })
+
+    const html = md.renderer.render(tokens, md.options, env)
+
+    expect(html).toBe(md.render(src))
+    expect(html).toContain('href="https://example.com"')
+    expect((env as any).__mdtsUnboundedInfo).toMatchObject({
+      fallback: true,
+      fallbackReason: 'reference-definition',
+    })
+  })
+
   it('refreshes reference definitions when reusing the same env object', () => {
     const md = markdownit()
     const env: Record<string, unknown> = {}

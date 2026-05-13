@@ -2,7 +2,14 @@ export type GlobalMarkdownStateReason = 'reference-definition' | 'footnote-defin
 
 const FOOTNOTE_DEF_RE = /(?:^|\n)[ \t]{0,3}\[\^[^\]\n]+\]:/m
 const ABBR_DEF_RE = /(?:^|\n)[ \t]{0,3}\*\[[^\]\n]+\]:/m
-const REFERENCE_DEF_RE = /(?:^|\n)[ \t]{0,3}\[(?!\^)(?:\\.|[^\]\n])+\][ \t]*:[ \t]*\S/m
+const REFERENCE_DEF_RE = /(?:^|\n)[ \t]{0,3}\[(?!\^)(?:\\.|[^\]\n])+\][ \t]*:/m
+const GLOBAL_STATE_ENV_KEYS = [
+  'references',
+  'footnotes',
+  'abbreviations',
+  'abbr',
+  'abbrs',
+] as const
 
 export function detectGlobalMarkdownState(src: string): GlobalMarkdownStateReason | null {
   if (!src)
@@ -25,9 +32,8 @@ export function hasGlobalMarkdownState(src: string): boolean {
 }
 
 export function resetKnownGlobalMarkdownState(env: Record<string, unknown>): void {
-  delete (env as any).references
-  delete (env as any).footnotes
-  delete (env as any).abbreviations
-  delete (env as any).abbr
-  delete (env as any).abbrs
+  for (const key of GLOBAL_STATE_ENV_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(env, key))
+      delete (env as any)[key]
+  }
 }
