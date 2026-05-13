@@ -19,6 +19,7 @@ type GlobalStateEnvKey = typeof GLOBAL_STATE_ENV_KEYS[number]
 interface EnvValueSnapshot {
   existed: boolean
   value?: unknown
+  ownedKeys?: string[]
 }
 
 interface GlobalStateMarker {
@@ -54,6 +55,56 @@ function cloneSnapshotValue(value: unknown): unknown {
   return value
 }
 
+function ownKeys(value: unknown): string[] {
+  if (Array.isArray(value))
+    return value.map((_, index) => String(index))
+
+  if (isPlainObject(value))
+    return Object.keys(value)
+
+  return []
+}
+
+function snapshotValueEquals(left: unknown, right: unknown): boolean {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right))
+      return false
+    if (left.length !== right.length)
+      return false
+    for (let i = 0; i < left.length; i++) {
+      if (!snapshotValueEquals(left[i], right[i]))
+        return false
+    }
+    return true
+  }
+
+  if (isPlainObject(left) || isPlainObject(right)) {
+    if (!isPlainObject(left) || !isPlainObject(right))
+      return false
+    const leftKeys = Object.keys(left)
+    const rightKeys = Object.keys(right)
+    if (leftKeys.length !== rightKeys.length)
+      return false
+    for (const key of leftKeys) {
+      if (!hasOwn.call(right, key) || !snapshotValueEquals(left[key], right[key]))
+        return false
+    }
+    return true
+  }
+
+  return Object.is(left, right)
+}
+
+function getSnapshotKeyValue(value: unknown, key: string): unknown {
+  if (Array.isArray(value))
+    return value[Number(key)]
+
+  if (isPlainObject(value))
+    return value[key]
+
+  return undefined
+}
+
 function restoreSnapshotValue(target: unknown, snapshot: unknown): unknown {
   if (Array.isArray(target) && Array.isArray(snapshot)) {
     target.length = snapshot.length
@@ -75,6 +126,39 @@ function restoreSnapshotValue(target: unknown, snapshot: unknown): unknown {
   }
 
   return cloneSnapshotValue(snapshot)
+}
+
+function resetOwnedSnapshotValue(
+  env: Record<string, unknown>,
+  key: GlobalStateEnvKey,
+  entry: EnvValueSnapshot,
+): void {
+  const ownedKeys = entry.ownedKeys ?? []
+  const target = (env as any)[key]
+
+  if (isPlainObject(target) || Array.isArray(target)) {
+    const snapshotKeys = new Set(ownKeys(entry.value))
+    for (const ownedKey of ownedKeys) {
+      if (entry.existed && snapshotKeys.has(ownedKey)) {
+        ;(target as any)[ownedKey] = cloneSnapshotValue(getSnapshotKeyValue(entry.value, ownedKey))
+      }
+      else {
+        delete (target as any)[ownedKey]
+      }
+    }
+
+    if (!entry.existed && ownKeys(target).length === 0)
+      delete (env as any)[key]
+
+    return
+  }
+
+  if (entry.existed) {
+    ;(env as any)[key] = cloneSnapshotValue(entry.value)
+  }
+  else {
+    delete (env as any)[key]
+  }
 }
 
 function getMarker(env: Record<string, unknown>): GlobalStateMarker | null {
@@ -183,6 +267,34 @@ export function markKnownGlobalMarkdownState(
   catch {}
 }
 
+export function finalizeKnownGlobalMarkdownState(env: Record<string, unknown>): void {
+  const marker = getMarker(env)
+  if (!marker)
+    return
+
+  for (const key of GLOBAL_STATE_ENV_KEYS) {
+    const entry = marker.snapshot[key]
+    if (!entry)
+      continue
+
+    entry.ownedKeys = []
+
+    const after = (env as any)[key]
+    if (!isPlainObject(after) && !Array.isArray(after))
+      continue
+
+    const beforeKeys = new Set(ownKeys(entry.existed ? entry.value : undefined))
+    const afterKeys = ownKeys(after)
+
+    entry.ownedKeys = afterKeys.filter((name) => {
+      if (!beforeKeys.has(name))
+        return true
+
+      return !snapshotValueEquals((after as any)[name], getSnapshotKeyValue(entry.value, name))
+    })
+  }
+}
+
 export function resetKnownGlobalMarkdownState(env: Record<string, unknown>): void {
   const marker = getMarker(env)
   if (!marker)
@@ -193,6 +305,11 @@ export function resetKnownGlobalMarkdownState(env: Record<string, unknown>): voi
 
     if (!entry) {
       delete (env as any)[key]
+      continue
+    }
+
+    if (entry.ownedKeys) {
+      resetOwnedSnapshotValue(env, key, entry)
       continue
     }
 

@@ -1,7 +1,7 @@
 import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
 import type { GlobalMarkdownStateReason } from '../parse/global_state'
-import { detectGlobalMarkdownState, detectGlobalMarkdownStateFromChunks, getKnownGlobalMarkdownState, markKnownGlobalMarkdownState, resetKnownGlobalMarkdownState } from '../parse/global_state'
+import { detectGlobalMarkdownState, detectGlobalMarkdownStateFromChunks, finalizeKnownGlobalMarkdownState, getKnownGlobalMarkdownState, markKnownGlobalMarkdownState, resetKnownGlobalMarkdownState } from '../parse/global_state'
 import { PieceTable } from './piece_table'
 
 interface SegmentAnchor {
@@ -219,6 +219,8 @@ export class EditableBuffer {
 
     this.staleGlobalStateReason = null
     this.tokens = this.md.core.parseSource(this.source.view(), env, this.md).tokens
+    if (nextReason)
+      finalizeKnownGlobalMarkdownState(env)
     this.globalStateReason = nextReason
     this.statsState.fullParses += 1
     this.statsState.lastMode = 'full'

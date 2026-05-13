@@ -23,6 +23,23 @@ describe('global markdown state env cleanup across APIs', () => {
     expect(html).not.toContain('https://old.example')
   })
 
+  it('preserves user-added references between marked plain renders', () => {
+    const md = markdownit()
+    const env: Record<string, any> = {}
+
+    md.render('[old][old]\n\n[old]: https://old.example\n', env)
+
+    env.references.MANUAL = {
+      href: 'https://manual.example',
+      title: '',
+    }
+
+    const html = md.render('[x][manual]\n', env)
+
+    expect(html).toContain('href="https://manual.example"')
+    expect(html).not.toContain('https://old.example')
+  })
+
   it('clears mdts-owned references when switching from chunkedParse to plain render', () => {
     const md = markdownit()
     const env: Record<string, unknown> = {}

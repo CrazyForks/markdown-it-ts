@@ -277,5 +277,9 @@ describe('chunkedParse correctness', () => {
     })
 
     expect((result.env as any).__mdtsChunkInfo?.fallback).not.toBe(true)
+    expect((result.env as any).__mdtsChunkInfo).toMatchObject({
+      globalStateDetected: 'reference-definition',
+      globalStateFallbackDisabled: true,
+    })
   })
 })

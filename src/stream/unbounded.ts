@@ -2,7 +2,7 @@ import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
 import type { GlobalMarkdownStateReason } from '../parse/global_state'
 import { countLines } from '../common/utils'
-import { detectGlobalMarkdownState, getKnownGlobalMarkdownState, markKnownGlobalMarkdownState, resetKnownGlobalMarkdownState } from '../parse/global_state'
+import { detectGlobalMarkdownState, finalizeKnownGlobalMarkdownState, getKnownGlobalMarkdownState, markKnownGlobalMarkdownState, resetKnownGlobalMarkdownState } from '../parse/global_state'
 import { splitIntoChunkRanges } from './chunked'
 
 export interface UnboundedBufferOptions {
@@ -417,6 +417,8 @@ export class UnboundedBuffer {
       }
       consumed = range.end
     }
+    if (this.markedGlobalStateReason)
+      finalizeKnownGlobalMarkdownState(env)
     return consumed
   }
 
@@ -432,6 +434,7 @@ export class UnboundedBuffer {
         pendingLines,
         fedChunks: this.fedChunks,
         parsedChunks: this.parsedChunks,
+        globalStateDetected: this.markedGlobalStateReason || undefined,
       }
     }
     catch {}
@@ -570,12 +573,14 @@ export function parseStringUnbounded(
         pendingLines: 0,
         fedChunks: 1,
         parsedChunks: 1,
+        globalStateDetected: currentGlobalStateReason,
       }
     }
     catch {}
 
     markKnownGlobalMarkdownState(env, currentGlobalStateReason)
     const tokens = md.core.parse(src, env, md).tokens
+    finalizeKnownGlobalMarkdownState(env)
     return tokens
   }
 
@@ -594,6 +599,20 @@ export function parseStringUnbounded(
 
   buffer.feed(src)
   buffer.flushForce(env)
+
+  if (currentGlobalStateReason) {
+    finalizeKnownGlobalMarkdownState(env)
+    if (opts.fallbackOnGlobalState === false) {
+      try {
+        const info = (env as any).__mdtsUnboundedInfo
+        if (info && typeof info === 'object') {
+          info.globalStateDetected = currentGlobalStateReason
+          info.globalStateFallbackDisabled = true
+        }
+      }
+      catch {}
+    }
+  }
 
   return tokens
 }

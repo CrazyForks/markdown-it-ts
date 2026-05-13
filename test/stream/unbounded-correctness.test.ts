@@ -194,4 +194,29 @@ describe('parseStringUnbounded correctness', () => {
     expect(html).toBe(md.render('[x][ref]\n'))
     expect(html).not.toContain('https://old.example')
   })
+
+  it('records diagnostics when global-state fallback is disabled', () => {
+    const md = markdownit()
+    const env: Record<string, unknown> = {}
+    const src = [
+      '[later][x]',
+      '',
+      'plain text',
+      '',
+      '[x]: https://example.com',
+      '',
+    ].join('\n')
+
+    parseStringUnbounded(md, src, env, {
+      maxChunkChars: 20,
+      maxChunkLines: 2,
+      fallbackOnGlobalState: false,
+    })
+
+    expect((env as any).__mdtsUnboundedInfo?.fallback).not.toBe(true)
+    expect((env as any).__mdtsUnboundedInfo).toMatchObject({
+      globalStateDetected: 'reference-definition',
+      globalStateFallbackDisabled: true,
+    })
+  })
 })

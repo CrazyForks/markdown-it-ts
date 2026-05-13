@@ -5,6 +5,7 @@
 import { performance } from 'node:perf_hooks'
 import { writeFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
+import os from 'node:os'
 import MarkdownIt from '../dist/index.js'
 import MarkdownItOriginal from 'markdown-it'
 import { createMarkdownExit as createMarkdownExitFactory } from 'markdown-exit'
@@ -15,6 +16,27 @@ import remarkRehype from 'remark-rehype'
 import rehypeStringify from 'rehype-stringify'
 
 const PERF_BENCHMARK_VERSION = 5
+
+function safeGitCommit(args = ['rev-parse', 'HEAD']) {
+  try {
+    return execSync(`git ${args.join(' ')}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'unknown'
+  }
+  catch {
+    return 'unknown'
+  }
+}
+
+function getPerfEnvironment() {
+  const cpus = os.cpus()
+  return {
+    generatedAt: new Date().toISOString(),
+    node: process.version,
+    platform: `${process.platform} ${process.arch}`,
+    cpu: cpus[0]?.model ?? 'unknown',
+    cpuCount: cpus.length,
+    commit: safeGitCommit(),
+  }
+}
 
 function para(n) {
   return `## Section ${n}\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod.\n\n- a\n- b\n- c\n\n\`\`\`js\nconsole.log(${n})\n\`\`\`\n\n`
@@ -487,9 +509,18 @@ function measureRenderComparisons() {
   return results
 }
 
-function toMarkdown(results, coldHot) {
+function toMarkdown(results, coldHot, environment) {
   const lines = []
   lines.push('# Performance Report (latest run)')
+  lines.push('')
+  lines.push('## Environment')
+  lines.push('')
+  lines.push(`- Generated at: ${environment.generatedAt}`)
+  lines.push(`- Node.js: ${environment.node}`)
+  lines.push(`- Platform: ${environment.platform}`)
+  lines.push(`- CPU: ${environment.cpu}`)
+  lines.push(`- CPU count: ${environment.cpuCount}`)
+  lines.push(`- Commit: ${environment.commit}`)
   lines.push('')
   lines.push('Default API note: normal `md.parse(src)` / `md.render(src)` calls already auto-activate the internal large-input path for very large finite strings. Explicit chunk-stream APIs such as `parseIterable` / `UnboundedBuffer` are advanced tools for sources that already arrive as chunks.')
   lines.push('')
@@ -702,21 +733,21 @@ function groupBy(arr, key) {
 const results = runMatrix()
 const coldHot = measureColdHot()
 const renderComparisons = measureRenderComparisons()
-const md = toMarkdown(results, coldHot, renderComparisons)
+const environment = getPerfEnvironment()
+const md = toMarkdown(results, coldHot, environment)
 writeFileSync(new URL('../docs/perf-latest.md', import.meta.url), md)
 
 // Also write a machine-readable JSON for regression checks
-let gitSha = null
-try {
-  gitSha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || null
-}
-catch {}
+const shortCommit = environment.commit === 'unknown'
+  ? safeGitCommit(['rev-parse', '--short', 'HEAD'])
+  : environment.commit.slice(0, 7)
 
 const payload = {
   benchmarkVersion: PERF_BENCHMARK_VERSION,
-  generatedAt: new Date().toISOString(),
-  node: process.version,
-  gitSha,
+  generatedAt: environment.generatedAt,
+  node: environment.node,
+  gitSha: shortCommit === 'unknown' ? null : shortCommit,
+  environment,
   results,
   coldHot,
   renderComparisons,

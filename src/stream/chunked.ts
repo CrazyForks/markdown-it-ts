@@ -1,6 +1,6 @@
 import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
-import { detectGlobalMarkdownState, getKnownGlobalMarkdownState, markKnownGlobalMarkdownState, resetKnownGlobalMarkdownState } from '../parse/global_state'
+import { detectGlobalMarkdownState, finalizeKnownGlobalMarkdownState, getKnownGlobalMarkdownState, markKnownGlobalMarkdownState, resetKnownGlobalMarkdownState } from '../parse/global_state'
 
 export interface ChunkedOptions {
   maxChunkChars?: number // hard limit per chunk by characters
@@ -47,6 +47,7 @@ export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, un
         count: 1,
         fallback: true,
         fallbackReason: currentGlobalStateReason,
+        globalStateDetected: currentGlobalStateReason,
         maxChunkChars: options.maxChunkChars,
         maxChunkLines: options.maxChunkLines,
       }
@@ -55,6 +56,7 @@ export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, un
 
     markKnownGlobalMarkdownState(env, currentGlobalStateReason)
     const tokens = md.core.parse(src, env, md).tokens
+    finalizeKnownGlobalMarkdownState(env)
     return tokens
   }
 
@@ -75,6 +77,8 @@ export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, un
       count: ranges.length,
       maxChunkChars: options.maxChunkChars,
       maxChunkLines: options.maxChunkLines,
+      globalStateDetected: currentGlobalStateReason || undefined,
+      globalStateFallbackDisabled: options.fallbackOnGlobalState === false && !!currentGlobalStateReason,
     }
   }
   catch {}
@@ -93,6 +97,9 @@ export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, un
     appendTokens(out, tokens)
     lineOffset += range.lineCount
   }
+
+  if (currentGlobalStateReason)
+    finalizeKnownGlobalMarkdownState(env)
 
   return out
 }
