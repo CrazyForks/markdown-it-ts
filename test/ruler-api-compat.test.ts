@@ -21,6 +21,25 @@ describe('ruler API compatibility', () => {
     expect(md.renderInline('abc')).toBe('#abc#')
   })
 
+  it('does not bypass replaced inline text rule in block rendering', () => {
+    const md = markdownit()
+
+    md.inline.ruler.at('text', (state: any, silent?: boolean) => {
+      const start = state.pos
+      const end = state.posMax
+
+      if (!silent) {
+        const token = state.push('text', '', 0)
+        token.content = `#${state.src.slice(start, end)}#`
+      }
+
+      state.pos = end
+      return true
+    })
+
+    expect(md.render('abc')).toBe('<p>#abc#</p>\n')
+  })
+
   it('supports inline.ruler2.at(name, fn) replacement', () => {
     const md = markdownit()
     let called = false

@@ -11,6 +11,10 @@ export interface UnboundedBufferOptions {
   autoTune?: boolean
   retainTokens?: boolean
   onChunkTokens?: UnboundedTokenConsumer
+}
+
+export interface ParseStringUnboundedOptions
+  extends Omit<UnboundedBufferOptions, 'retainTokens' | 'onChunkTokens'> {
   fallbackOnGlobalState?: boolean
 }
 
@@ -530,7 +534,7 @@ export function parseStringUnbounded(
   md: MarkdownIt,
   src: string,
   env: Record<string, unknown> = {},
-  opts: Omit<UnboundedBufferOptions, 'retainTokens' | 'onChunkTokens'> = {},
+  opts: ParseStringUnboundedOptions = {},
 ): Token[] {
   if (opts.fallbackOnGlobalState !== false) {
     const fallbackReason = detectGlobalMarkdownState(src)

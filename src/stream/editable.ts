@@ -72,6 +72,21 @@ function editMayAffectGlobalState(text: string): boolean {
   return false
 }
 
+function sliceAffectedLines(source: PieceTable, start: number, end: number): string {
+  const length = source.length
+  const clampedStart = Math.max(0, Math.min(start, length))
+  const clampedEnd = Math.max(clampedStart, Math.min(end, length))
+  const firstLine = source.lineOfOffset(clampedStart)
+  const endProbe = clampedEnd > clampedStart
+    ? clampedEnd - 1
+    : clampedStart
+  const lastLine = source.lineOfOffset(endProbe)
+  const from = source.offsetOfLine(firstLine)
+  const to = source.offsetOfLine(lastLine + 1)
+
+  return source.slice(from, to)
+}
+
 export class EditableBuffer {
   private readonly md: MarkdownIt
   private source: PieceTable
@@ -153,17 +168,23 @@ export class EditableBuffer {
     const beforeLength = this.source.length
     const clampedStart = Math.max(0, Math.min(start, beforeLength))
     const clampedEnd = Math.max(clampedStart, Math.min(end, beforeLength))
+    const beforeAffectedLines = sliceAffectedLines(this.source, clampedStart, clampedEnd)
     const removedText = clampedStart < clampedEnd
       ? this.source.slice(clampedStart, clampedEnd)
       : ''
-    const mustFullParse = editMayAffectGlobalState(text) || editMayAffectGlobalState(removedText)
     const editLine = this.source.lineOfOffset(clampedStart)
-    const anchor = !mustFullParse && this.tokens.length > 0
+    const mustFullParseBeforeEdit = editMayAffectGlobalState(beforeAffectedLines)
+      || editMayAffectGlobalState(removedText)
+      || editMayAffectGlobalState(text)
+    const anchor = !mustFullParseBeforeEdit && this.tokens.length > 0
       ? this.findAnchorForEditLine(editLine)
       : null
 
     this.source.replace(clampedStart, clampedEnd, text)
     this.statsState.edits += 1
+
+    const afterAffectedLines = sliceAffectedLines(this.source, clampedStart, clampedStart + text.length)
+    const mustFullParse = mustFullParseBeforeEdit || editMayAffectGlobalState(afterAffectedLines)
 
     if (mustFullParse) {
       try {

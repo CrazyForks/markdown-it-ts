@@ -20,6 +20,7 @@ export {
 } from './stream/unbounded'
 
 export type {
+  ParseStringUnboundedOptions,
   UnboundedBufferOptions,
   UnboundedBufferStats,
   UnboundedChunkInfo,

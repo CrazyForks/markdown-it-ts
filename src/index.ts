@@ -43,7 +43,7 @@ export type { StreamStats } from './stream/parser'
 export { PieceTable, PieceTableSourceView } from './stream/piece_table'
 export type { PieceTableStats } from './stream/piece_table'
 export { parseAsyncIterable, parseAsyncIterableToSink, parseIterable, parseIterableToSink, UnboundedBuffer } from './stream/unbounded'
-export type { UnboundedBufferOptions, UnboundedBufferStats, UnboundedChunkInfo, UnboundedTokenConsumer } from './stream/unbounded'
+export type { ParseStringUnboundedOptions, UnboundedBufferOptions, UnboundedBufferStats, UnboundedChunkInfo, UnboundedTokenConsumer } from './stream/unbounded'
 export { recommendFullChunkStrategy, recommendStreamChunkStrategy } from './support/chunk_recommend'
 
 type QuotesOption = string | [string, string, string, string]

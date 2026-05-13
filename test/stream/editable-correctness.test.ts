@@ -19,4 +19,35 @@ describe('EditableBuffer correctness fallback', () => {
       fallbackReason: 'global-markdown-state-edit',
     })
   })
+
+  it('falls back to full parse when editing inside an existing reference definition line', () => {
+    const md = markdownit()
+    const src = [
+      '[before][ref]',
+      '',
+      'middle',
+      '',
+      '[ref]: https://old.example',
+      '',
+      'tail',
+      '',
+    ].join('\n')
+
+    const buffer = new EditableBuffer(md, src)
+    const env: Record<string, unknown> = {}
+
+    buffer.parse()
+
+    const start = buffer.toString().indexOf('old.example')
+    buffer.replace(start, start + 'old.example'.length, 'new.example', env)
+
+    const html = md.renderer.render(buffer.peek(), md.options, env)
+
+    expect(html).toBe(md.render(buffer.toString()))
+    expect(buffer.stats().lastMode).toBe('full')
+    expect((env as any).__mdtsEditableInfo).toMatchObject({
+      fallback: true,
+      fallbackReason: 'global-markdown-state-edit',
+    })
+  })
 })
