@@ -239,6 +239,30 @@ export function getKnownGlobalMarkdownState(env: Record<string, unknown>): Globa
   return getMarker(env)?.reason ?? null
 }
 
+export function runWithKnownGlobalMarkdownState<T>(
+  env: Record<string, unknown>,
+  reason: GlobalMarkdownStateReason | null,
+  run: () => T,
+): T {
+  if (getKnownGlobalMarkdownState(env))
+    resetKnownGlobalMarkdownState(env)
+
+  if (!reason)
+    return run()
+
+  markKnownGlobalMarkdownState(env, reason)
+
+  try {
+    const result = run()
+    finalizeKnownGlobalMarkdownState(env)
+    return result
+  }
+  catch (error) {
+    resetKnownGlobalMarkdownState(env)
+    throw error
+  }
+}
+
 export function markKnownGlobalMarkdownState(
   env: Record<string, unknown>,
   reason: GlobalMarkdownStateReason,

@@ -7,7 +7,7 @@ import type { UnboundedBufferStats, UnboundedChunkInfo } from './stream/unbounde
 import LinkifyIt from 'linkify-it'
 import * as utils from './common/utils'
 import * as helpers from './helpers'
-import { detectGlobalMarkdownState, finalizeKnownGlobalMarkdownState, getKnownGlobalMarkdownState, markKnownGlobalMarkdownState, resetKnownGlobalMarkdownState } from './parse/global_state'
+import { detectGlobalMarkdownState, getKnownGlobalMarkdownState, resetKnownGlobalMarkdownState, runWithKnownGlobalMarkdownState } from './parse/global_state'
 import { normalizeLink, normalizeLinkText, validateLink } from './parse/link_utils'
 import { ParserCore } from './parse/parser_core'
 import { setStrategyDiagnostics } from './parse/strategy_diagnostics'
@@ -557,19 +557,11 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
           return parseStringUnbounded(this, src, env)
         }
       }
-      const previousGlobalStateReason = getKnownGlobalMarkdownState(env)
-      if (previousGlobalStateReason)
-        resetKnownGlobalMarkdownState(env)
-
       const currentGlobalStateReason = detectGlobalMarkdownState(src)
-      if (currentGlobalStateReason)
-        markKnownGlobalMarkdownState(env, currentGlobalStateReason)
-
       setStrategyDiagnostics(env, { area: 'parse', path: 'plain', reason: 'default-plain' })
-      const state = core.parse(src, env, this)
-      if (currentGlobalStateReason)
-        finalizeKnownGlobalMarkdownState(env)
-      return state.tokens
+      return runWithKnownGlobalMarkdownState(env, currentGlobalStateReason, () => {
+        return core.parse(src, env, this).tokens
+      })
     },
     parseIterable(this: MarkdownIt, chunks: Iterable<string>, env: Record<string, unknown> = {}) {
       return parseIterableSource(this, chunks, env)

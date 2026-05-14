@@ -1,6 +1,6 @@
 import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
-import { detectGlobalMarkdownState, finalizeKnownGlobalMarkdownState, getKnownGlobalMarkdownState, markKnownGlobalMarkdownState, resetKnownGlobalMarkdownState } from '../parse/global_state'
+import { detectGlobalMarkdownState, runWithKnownGlobalMarkdownState } from '../parse/global_state'
 
 export interface ChunkedOptions {
   maxChunkChars?: number // hard limit per chunk by characters
@@ -36,10 +36,6 @@ const DEFAULTS: Required<Omit<ChunkedOptions, 'maxChunks'>> & { maxChunks?: numb
 export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, unknown> = {}, opts?: ChunkedOptions): Token[] {
   const options = { ...DEFAULTS, ...(opts || {}) }
   const currentGlobalStateReason = detectGlobalMarkdownState(src)
-  const previousGlobalStateReason = getKnownGlobalMarkdownState(env)
-
-  if (previousGlobalStateReason)
-    resetKnownGlobalMarkdownState(env)
 
   if (options.fallbackOnGlobalState !== false && currentGlobalStateReason) {
     try {
@@ -54,10 +50,9 @@ export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, un
     }
     catch {}
 
-    markKnownGlobalMarkdownState(env, currentGlobalStateReason)
-    const tokens = md.core.parse(src, env, md).tokens
-    finalizeKnownGlobalMarkdownState(env)
-    return tokens
+    return runWithKnownGlobalMarkdownState(env, currentGlobalStateReason, () => {
+      return md.core.parse(src, env, md).tokens
+    })
   }
 
   let ranges = splitIntoChunkRanges(src, options)
@@ -83,25 +78,21 @@ export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, un
   }
   catch {}
 
-  if (currentGlobalStateReason)
-    markKnownGlobalMarkdownState(env, currentGlobalStateReason)
-
-  for (let i = 0; i < ranges.length; i++) {
-    const range = ranges[i]
-    const ch = src.slice(range.start, range.end)
-    const state = md.core.parse(ch, env, md)
-    const tokens = state.tokens
-    if (lineOffset !== 0 && tokens.length) {
-      shiftTokenLines(tokens, lineOffset)
+  return runWithKnownGlobalMarkdownState(env, currentGlobalStateReason, () => {
+    for (let i = 0; i < ranges.length; i++) {
+      const range = ranges[i]
+      const ch = src.slice(range.start, range.end)
+      const state = md.core.parse(ch, env, md)
+      const tokens = state.tokens
+      if (lineOffset !== 0 && tokens.length) {
+        shiftTokenLines(tokens, lineOffset)
+      }
+      appendTokens(out, tokens)
+      lineOffset += range.lineCount
     }
-    appendTokens(out, tokens)
-    lineOffset += range.lineCount
-  }
 
-  if (currentGlobalStateReason)
-    finalizeKnownGlobalMarkdownState(env)
-
-  return out
+    return out
+  })
 }
 
 /**

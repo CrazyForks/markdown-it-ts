@@ -1,9 +1,8 @@
 import {
   detectGlobalMarkdownState,
-  finalizeKnownGlobalMarkdownState,
   getKnownGlobalMarkdownState,
-  markKnownGlobalMarkdownState,
   resetKnownGlobalMarkdownState,
+  runWithKnownGlobalMarkdownState,
 } from './global_state'
 import { ParserCore as ParserCoreClass } from './parser_core'
 
@@ -24,32 +23,12 @@ function getSharedCore(): ParserCoreClass {
   return sharedCore
 }
 
-function prepareGlobalState(src: string, env: Record<string, unknown>) {
-  if (getKnownGlobalMarkdownState(env))
-    resetKnownGlobalMarkdownState(env)
-
-  const reason = detectGlobalMarkdownState(src)
-  if (reason)
-    markKnownGlobalMarkdownState(env, reason)
-
-  return reason
-}
-
 export function parse(src: string, env: Record<string, unknown> = {}) {
   const core = getSharedCore()
-  const reason = prepareGlobalState(src, env)
-
-  try {
-    const state = core.parse(src, env)
-    if (reason)
-      finalizeKnownGlobalMarkdownState(env)
-    return state.tokens
-  }
-  catch (error) {
-    if (reason)
-      resetKnownGlobalMarkdownState(env)
-    throw error
-  }
+  const reason = detectGlobalMarkdownState(src)
+  return runWithKnownGlobalMarkdownState(env, reason, () => {
+    return core.parse(src, env).tokens
+  })
 }
 
 /**
