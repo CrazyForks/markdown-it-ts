@@ -462,14 +462,9 @@ export class StreamParser {
           const ctxState = this.core.parse(ctxSrc, cached.env, md)
           const ctxTokens = ctxState.tokens
 
-          // Find first token that belongs to appended region. Tokens produced
-          // by parsing `ctxSrc` will have `.map` values where lines starting
-          // at >= ctxLines belong to appended part (since contextPrefix has
-          // exactly ctxLines lines).
-          // Find the first token that ends at or after the context window.
-          // Using map[1] >= ctxLines ensures tokens that start earlier but
-          // extend into the appended region are treated as part of the append.
-          const idx = ctxTokens.findIndex(t => t.map && typeof t.map[1] === 'number' && t.map[1] >= ctxLines)
+          // Find the first token whose source range extends into the appended
+          // region. Tokens ending exactly at ctxLines belong only to context.
+          const idx = ctxTokens.findIndex(t => t.map && typeof t.map[1] === 'number' && t.map[1] > ctxLines)
           if (idx !== -1) {
             // Extract appended tokens and shift their line maps so they align
             // with the global cached line indices.
@@ -553,10 +548,21 @@ export class StreamParser {
             return false
           if (x.type !== y.type)
             return false
+          const xMap = x.map
+          const yMap = y.map
+          if (!!xMap !== !!yMap)
+            return false
+          if (xMap && yMap && (xMap[0] !== yMap[0] || xMap[1] !== yMap[1]))
+            return false
+          if (x.tag !== y.tag || x.nesting !== y.nesting)
+            return false
+          if (x.markup !== y.markup || x.info !== y.info)
+            return false
+          if (x.block !== y.block || x.hidden !== y.hidden)
+            return false
           if (x.type === 'inline')
             return (x.content || '') === (y.content || '')
-          // For other tokens, type equality is acceptable for duplication detection
-          return true
+          return (x.content || '') === (y.content || '')
         }
 
         // Debug output suppressed in CI
@@ -651,7 +657,9 @@ export class StreamParser {
     const auto = md.options?.autoTuneChunks !== false
     const chunkFenceAware = md.options?.streamChunkFenceAware ?? true
 
-    let srcLineCount2: number | undefined = cached.lineCount
+    let srcLineCount2: number | undefined = appended && cached.lineCount !== undefined
+      ? cached.lineCount + countLines(appended)
+      : undefined
     if (chunkedEnabled) {
       if (srcLineCount2 === undefined)
         srcLineCount2 = countLines(src)
