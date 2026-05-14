@@ -1,5 +1,7 @@
 import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
+import type { GlobalMarkdownStateReason } from '../parse/global_state'
+import { detectGlobalMarkdownState, detectGlobalMarkdownStateFromChunks, getKnownGlobalMarkdownState, resetKnownGlobalMarkdownState, runWithKnownGlobalMarkdownState } from '../parse/global_state'
 import { PieceTable } from './piece_table'
 
 interface SegmentAnchor {
@@ -56,15 +58,33 @@ function cloneStats(source: PieceTable, current: EditableBufferStats): EditableB
   }
 }
 
+function sliceAffectedLines(source: PieceTable, start: number, end: number): string {
+  const length = source.length
+  const clampedStart = Math.max(0, Math.min(start, length))
+  const clampedEnd = Math.max(clampedStart, Math.min(end, length))
+  const firstLine = source.lineOfOffset(clampedStart)
+  const endProbe = clampedEnd > clampedStart
+    ? clampedEnd - 1
+    : clampedStart
+  const lastLine = source.lineOfOffset(endProbe)
+  const from = source.offsetOfLine(firstLine)
+  const to = source.offsetOfLine(lastLine + 1)
+
+  return source.slice(from, to)
+}
+
 export class EditableBuffer {
   private readonly md: MarkdownIt
   private source: PieceTable
   private tokens: Token[] = []
   private statsState: EditableBufferStats
+  private globalStateReason: GlobalMarkdownStateReason | null
+  private staleGlobalStateReason: GlobalMarkdownStateReason | null = null
 
   constructor(md: MarkdownIt, initial = '') {
     this.md = md
     this.source = new PieceTable(initial)
+    this.globalStateReason = detectGlobalMarkdownState(initial)
     this.statsState = {
       edits: 0,
       fullParses: 0,
@@ -101,8 +121,10 @@ export class EditableBuffer {
 
   reset(text = ''): void {
     const next = new PieceTable(text)
+    this.staleGlobalStateReason = this.staleGlobalStateReason || this.globalStateReason
     this.source = next
     this.tokens = []
+    this.globalStateReason = detectGlobalMarkdownState(text)
     this.statsState = {
       edits: 0,
       fullParses: 0,
@@ -137,13 +159,45 @@ export class EditableBuffer {
     const beforeLength = this.source.length
     const clampedStart = Math.max(0, Math.min(start, beforeLength))
     const clampedEnd = Math.max(clampedStart, Math.min(end, beforeLength))
+    const beforeAffectedLines = sliceAffectedLines(this.source, clampedStart, clampedEnd)
+    const removedText = clampedStart < clampedEnd
+      ? this.source.slice(clampedStart, clampedEnd)
+      : ''
     const editLine = this.source.lineOfOffset(clampedStart)
-    const anchor = this.tokens.length > 0
+    const beforeAffectedReason = detectGlobalMarkdownState(beforeAffectedLines)
+    const removedReason = detectGlobalMarkdownState(removedText)
+    const insertedReason = detectGlobalMarkdownState(text)
+    const mustFullParseBeforeEdit = this.globalStateReason !== null
+      || beforeAffectedReason !== null
+      || removedReason !== null
+      || insertedReason !== null
+    const anchor = !mustFullParseBeforeEdit && this.tokens.length > 0
       ? this.findAnchorForEditLine(editLine)
       : null
 
     this.source.replace(clampedStart, clampedEnd, text)
     this.statsState.edits += 1
+
+    const afterAffectedLines = sliceAffectedLines(this.source, clampedStart, clampedStart + text.length)
+    const introducedReason = detectGlobalMarkdownState(afterAffectedLines) || insertedReason
+    const fallbackReason = this.globalStateReason
+      || beforeAffectedReason
+      || removedReason
+      || insertedReason
+      || introducedReason
+    const mustFullParse = mustFullParseBeforeEdit || introducedReason !== null
+
+    if (mustFullParse) {
+      try {
+        ;(env as any).__mdtsEditableInfo = {
+          fallback: true,
+          fallbackReason: fallbackReason || 'global-markdown-state-edit',
+        }
+      }
+      catch {}
+
+      return this.fullParse(env)
+    }
 
     if (!anchor || (anchor.tokenStart <= 0 && anchor.lineStart <= 0))
       return this.fullParse(env)
@@ -151,8 +205,21 @@ export class EditableBuffer {
     return this.localizedReparse(anchor, env)
   }
 
+  private detectSourceGlobalState(): GlobalMarkdownStateReason | null {
+    return detectGlobalMarkdownStateFromChunks(this.source.iterateChunks())
+  }
+
   private fullParse(env: Record<string, unknown>): Token[] {
-    this.tokens = this.md.core.parseSource(this.source.view(), env, this.md).tokens
+    const previousReason = this.staleGlobalStateReason || this.globalStateReason
+    const nextReason = this.detectSourceGlobalState()
+    if (previousReason || getKnownGlobalMarkdownState(env))
+      resetKnownGlobalMarkdownState(env)
+
+    this.staleGlobalStateReason = null
+    this.tokens = runWithKnownGlobalMarkdownState(env, nextReason, () => {
+      return this.md.core.parseSource(this.source.view(), env, this.md).tokens
+    })
+    this.globalStateReason = nextReason
     this.statsState.fullParses += 1
     this.statsState.lastMode = 'full'
     this.statsState.lastAnchorLine = 0

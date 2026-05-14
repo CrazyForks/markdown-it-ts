@@ -1,6 +1,8 @@
 import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
+import type { GlobalMarkdownStateReason } from '../parse/global_state'
 import { countLines } from '../common/utils'
+import { detectGlobalMarkdownState, finalizeKnownGlobalMarkdownState, getKnownGlobalMarkdownState, markKnownGlobalMarkdownState, resetKnownGlobalMarkdownState, runWithKnownGlobalMarkdownState } from '../parse/global_state'
 import { splitIntoChunkRanges } from './chunked'
 
 export interface UnboundedBufferOptions {
@@ -11,6 +13,11 @@ export interface UnboundedBufferOptions {
   autoTune?: boolean
   retainTokens?: boolean
   onChunkTokens?: UnboundedTokenConsumer
+}
+
+export interface ParseStringUnboundedOptions
+  extends Omit<UnboundedBufferOptions, 'retainTokens' | 'onChunkTokens'> {
+  fallbackOnGlobalState?: boolean
 }
 
 const DEFAULT_AUTO_UNBOUNDED_THRESHOLD_CHARS = 4_000_000
@@ -217,6 +224,8 @@ export class UnboundedBuffer {
   private committedLines = 0
   private fedChunks = 0
   private parsedChunks = 0
+  private globalStateEnv: Record<string, unknown> | null = null
+  private markedGlobalStateReason: GlobalMarkdownStateReason | null = null
 
   constructor(md: MarkdownIt, opts: UnboundedBufferOptions = {}) {
     this.md = md
@@ -292,6 +301,7 @@ export class UnboundedBuffer {
 
   flushForce(env: Record<string, unknown> = {}): Token[] {
     if (!this.pending) {
+      this.prepareGlobalStateEnv(env, '')
       const window = this.resolveWindow()
       this.updateEnvDiagnostics(env, window, 0)
       return this.tokens
@@ -321,6 +331,8 @@ export class UnboundedBuffer {
     this.committedLines = 0
     this.fedChunks = 0
     this.parsedChunks = 0
+    this.globalStateEnv = null
+    this.markedGlobalStateReason = null
   }
 
   peek(): Token[] {
@@ -350,40 +362,75 @@ export class UnboundedBuffer {
     return resolveWindow(this.md, totalChars, totalLines, this.options)
   }
 
+  private prepareGlobalStateEnv(env: Record<string, unknown>, srcAboutToParse: string): void {
+    if (this.globalStateEnv !== env) {
+      if (getKnownGlobalMarkdownState(env))
+        resetKnownGlobalMarkdownState(env)
+
+      this.globalStateEnv = env
+      this.markedGlobalStateReason = null
+    }
+
+    if (this.markedGlobalStateReason)
+      return
+
+    const reason = detectGlobalMarkdownState(srcAboutToParse)
+    if (!reason)
+      return
+
+    markKnownGlobalMarkdownState(env, reason)
+    this.markedGlobalStateReason = reason
+  }
+
   private commitRanges(ranges: Array<{ start: number, end: number, lineCount: number }>, env: Record<string, unknown>): number {
     if (!ranges.length)
       return 0
 
+    this.prepareGlobalStateEnv(env, this.pending)
+
     let consumed = 0
-    for (let i = 0; i < ranges.length; i++) {
-      const range = ranges[i]
-      const src = this.pending.slice(range.start, range.end)
-      const state = this.md.core.parse(src, env, this.md)
-      const nextTokens = state.tokens
-      const startOffset = this.committedChars
-      const startLine = this.committedLines
-      if (startLine !== 0 && nextTokens.length)
-        shiftTokenLines(nextTokens, startLine)
-      if (this.options.retainTokens !== false)
-        appendTokens(this.tokens, nextTokens)
-      this.committedChars += src.length
-      this.committedLines += range.lineCount
-      this.parsedChunks += 1
-      if (this.options.onChunkTokens) {
-        this.options.onChunkTokens(nextTokens, {
-          chunkIndex: this.parsedChunks,
-          chunkChars: src.length,
-          chunkLines: range.lineCount,
-          tokenCount: nextTokens.length,
-          startOffset,
-          endOffset: this.committedChars,
-          startLine,
-          endLine: this.committedLines,
-        })
+    try {
+      for (let i = 0; i < ranges.length; i++) {
+        const range = ranges[i]
+        const src = this.pending.slice(range.start, range.end)
+        const state = this.md.core.parse(src, env, this.md)
+        const nextTokens = state.tokens
+        const startOffset = this.committedChars
+        const startLine = this.committedLines
+        if (startLine !== 0 && nextTokens.length)
+          shiftTokenLines(nextTokens, startLine)
+        if (this.options.retainTokens !== false)
+          appendTokens(this.tokens, nextTokens)
+        this.committedChars += src.length
+        this.committedLines += range.lineCount
+        this.parsedChunks += 1
+        if (this.options.onChunkTokens) {
+          this.options.onChunkTokens(nextTokens, {
+            chunkIndex: this.parsedChunks,
+            chunkChars: src.length,
+            chunkLines: range.lineCount,
+            tokenCount: nextTokens.length,
+            startOffset,
+            endOffset: this.committedChars,
+            startLine,
+            endLine: this.committedLines,
+          })
+        }
+        consumed = range.end
       }
-      consumed = range.end
+
+      if (this.markedGlobalStateReason)
+        finalizeKnownGlobalMarkdownState(env)
+      return consumed
     }
-    return consumed
+    catch (error) {
+      if (this.markedGlobalStateReason) {
+        resetKnownGlobalMarkdownState(env)
+        this.globalStateEnv = null
+        this.markedGlobalStateReason = null
+      }
+      throw error
+    }
   }
 
   private updateEnvDiagnostics(env: Record<string, unknown>, window: ResolvedWindow, pendingLines: number): void {
@@ -398,6 +445,7 @@ export class UnboundedBuffer {
         pendingLines,
         fedChunks: this.fedChunks,
         parsedChunks: this.parsedChunks,
+        globalStateDetected: this.markedGlobalStateReason || undefined,
       }
     }
     catch {}
@@ -516,8 +564,36 @@ export function parseStringUnbounded(
   md: MarkdownIt,
   src: string,
   env: Record<string, unknown> = {},
-  opts: Omit<UnboundedBufferOptions, 'retainTokens' | 'onChunkTokens'> = {},
+  opts: ParseStringUnboundedOptions = {},
 ): Token[] {
+  const currentGlobalStateReason = detectGlobalMarkdownState(src)
+  const previousGlobalStateReason = getKnownGlobalMarkdownState(env)
+
+  if (previousGlobalStateReason)
+    resetKnownGlobalMarkdownState(env)
+
+  if (opts.fallbackOnGlobalState !== false && currentGlobalStateReason) {
+    try {
+      ;(env as any).__mdtsUnboundedInfo = {
+        mode: 'full',
+        fallback: true,
+        fallbackReason: currentGlobalStateReason,
+        committedChars: src.length,
+        committedLines: countLines(src),
+        pendingChars: 0,
+        pendingLines: 0,
+        fedChunks: 1,
+        parsedChunks: 1,
+        globalStateDetected: currentGlobalStateReason,
+      }
+    }
+    catch {}
+
+    return runWithKnownGlobalMarkdownState(env, currentGlobalStateReason, () => {
+      return md.core.parse(src, env, md).tokens
+    })
+  }
+
   const tokens: Token[] = []
   const buffer = new UnboundedBuffer(md, {
     mode: 'full',
@@ -528,8 +604,25 @@ export function parseStringUnbounded(
     },
   })
 
+  if (currentGlobalStateReason)
+    markKnownGlobalMarkdownState(env, currentGlobalStateReason)
+
   buffer.feed(src)
   buffer.flushForce(env)
+
+  if (currentGlobalStateReason) {
+    finalizeKnownGlobalMarkdownState(env)
+    if (opts.fallbackOnGlobalState === false) {
+      try {
+        const info = (env as any).__mdtsUnboundedInfo
+        if (info && typeof info === 'object') {
+          info.globalStateDetected = currentGlobalStateReason
+          info.globalStateFallbackDisabled = true
+        }
+      }
+      catch {}
+    }
+  }
 
   return tokens
 }

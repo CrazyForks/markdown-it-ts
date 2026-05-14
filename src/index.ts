@@ -7,6 +7,7 @@ import type { UnboundedBufferStats, UnboundedChunkInfo } from './stream/unbounde
 import LinkifyIt from 'linkify-it'
 import * as utils from './common/utils'
 import * as helpers from './helpers'
+import { detectGlobalMarkdownState, getKnownGlobalMarkdownState, resetKnownGlobalMarkdownState, runWithKnownGlobalMarkdownState } from './parse/global_state'
 import { normalizeLink, normalizeLinkText, validateLink } from './parse/link_utils'
 import { ParserCore } from './parse/parser_core'
 import { setStrategyDiagnostics } from './parse/strategy_diagnostics'
@@ -43,7 +44,7 @@ export type { StreamStats } from './stream/parser'
 export { PieceTable, PieceTableSourceView } from './stream/piece_table'
 export type { PieceTableStats } from './stream/piece_table'
 export { parseAsyncIterable, parseAsyncIterableToSink, parseIterable, parseIterableToSink, UnboundedBuffer } from './stream/unbounded'
-export type { UnboundedBufferOptions, UnboundedBufferStats, UnboundedChunkInfo, UnboundedTokenConsumer } from './stream/unbounded'
+export type { ParseStringUnboundedOptions, UnboundedBufferOptions, UnboundedBufferStats, UnboundedChunkInfo, UnboundedTokenConsumer } from './stream/unbounded'
 export { recommendFullChunkStrategy, recommendStreamChunkStrategy } from './support/chunk_recommend'
 
 type QuotesOption = string | [string, string, string, string]
@@ -171,6 +172,26 @@ function hasExplicitOption(
 ): boolean {
   return (!!userOptions && Object.prototype.hasOwnProperty.call(userOptions, key))
     || (!!presetOptions && Object.prototype.hasOwnProperty.call(presetOptions, key))
+}
+
+function setFullChunkStrategyDiagnostics(env: Record<string, unknown>, reason: string): void {
+  const chunkInfo = (env as any).__mdtsChunkInfo
+
+  if (chunkInfo?.fallback) {
+    setStrategyDiagnostics(env, {
+      area: 'parse',
+      path: 'plain',
+      reason: `global-state:${chunkInfo.fallbackReason || 'unknown'}`,
+    })
+    return
+  }
+
+  setStrategyDiagnostics(env, {
+    area: 'parse',
+    path: 'full-chunk',
+    chunked: true,
+    reason,
+  })
 }
 
 function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownItOptions): MarkdownIt {
@@ -497,18 +518,13 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
 
           if (useChunked) {
             if (autoRecommendation && autoRecommendation.strategy !== 'plain') {
-              setStrategyDiagnostics(env, {
-                area: 'parse',
-                path: 'full-chunk',
-                chunked: true,
-                reason: wantsChunking ? 'explicit-full-chunk' : 'default-large-string',
-              })
               const tokens = chunkedParse(this, src, env, {
                 maxChunkChars: autoRecommendation.maxChunkChars,
                 maxChunkLines: autoRecommendation.maxChunkLines,
                 fenceAware: autoRecommendation.fenceAware,
                 maxChunks: autoRecommendation.maxChunks,
               })
+              setFullChunkStrategyDiagnostics(env, wantsChunking ? 'explicit-full-chunk' : 'default-large-string')
               return tokens
             }
 
@@ -524,18 +540,14 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
                 ? clamp(Math.ceil(chars / 64_000), target, 32)
                 : this.options.fullChunkMaxChunks
 
-              setStrategyDiagnostics(env, {
-                area: 'parse',
-                path: 'full-chunk',
-                chunked: true,
-                reason: 'explicit-full-chunk',
-              })
-              return chunkedParse(this, src, env, {
+              const tokens = chunkedParse(this, src, env, {
                 maxChunkChars,
                 maxChunkLines,
                 fenceAware: this.options.fullChunkFenceAware ?? true,
                 maxChunks,
               })
+              setFullChunkStrategyDiagnostics(env, 'explicit-full-chunk')
+              return tokens
             }
           }
         }
@@ -545,9 +557,11 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
           return parseStringUnbounded(this, src, env)
         }
       }
+      const currentGlobalStateReason = detectGlobalMarkdownState(src)
       setStrategyDiagnostics(env, { area: 'parse', path: 'plain', reason: 'default-plain' })
-      const state = core.parse(src, env, this)
-      return state.tokens
+      return runWithKnownGlobalMarkdownState(env, currentGlobalStateReason, () => {
+        return core.parse(src, env, this).tokens
+      })
     },
     parseIterable(this: MarkdownIt, chunks: Iterable<string>, env: Record<string, unknown> = {}) {
       return parseIterableSource(this, chunks, env)
@@ -564,6 +578,8 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
     parseInline(src: string, env: Record<string, unknown> = {}) {
       if (typeof src !== 'string')
         throw new TypeError('Input data should be a String')
+      if (getKnownGlobalMarkdownState(env))
+        resetKnownGlobalMarkdownState(env)
       const state = core.createState(src, env, this)
       state.inlineMode = true
       core.process(state)

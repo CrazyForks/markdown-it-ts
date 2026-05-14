@@ -1,7 +1,9 @@
 import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
+import type { GlobalMarkdownStateReason } from '../parse/global_state'
 import type { ParserCore } from '../parse/parser_core'
 import { countLines } from '../common/utils'
+import { detectGlobalMarkdownState, getKnownGlobalMarkdownState, resetKnownGlobalMarkdownState, runWithKnownGlobalMarkdownState } from '../parse/global_state'
 import { setStrategyDiagnostics } from '../parse/strategy_diagnostics'
 import { recommendStreamChunkStrategy } from '../support/chunk_recommend'
 import { chunkedParse } from './chunked'
@@ -14,6 +16,7 @@ interface StreamCache {
   // Cache line count to avoid recounting
   lineCount?: number
   lastSegment?: StreamSegment | null
+  globalStateReason?: GlobalMarkdownStateReason | null
 }
 
 interface StreamSegment {
@@ -164,17 +167,12 @@ export class StreamParser {
             fenceAware: recommendation?.fenceAware ?? chunkFenceAware,
             maxChunks: useMaxChunks,
           })
-          this.cache = { src, tokens, env: workingEnv, lineCount: srcLineCount, lastSegment: undefined }
+          this.cache = { src, tokens, env: workingEnv, lineCount: srcLineCount, lastSegment: undefined, globalStateReason: detectGlobalMarkdownState(src) }
           this.updateCacheLineCount(this.cache, srcLineCount)
-          this.stats.total += 1
-          this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
-          this.stats.lastMode = 'chunked'
-          setStrategyDiagnostics(workingEnv, {
-            area: 'stream',
-            path: 'stream-chunked',
-            chunked: true,
-            reason: wantsChunking ? 'explicit-initial-large-doc' : 'default-initial-large-doc',
-          })
+          this.recordChunkedParseResult(
+            workingEnv,
+            wantsChunking ? 'explicit-initial-large-doc' : 'default-initial-large-doc',
+          )
           return tokens
         }
       }
@@ -183,7 +181,7 @@ export class StreamParser {
       const parsed = this.parseFullDocument(src, workingEnv, md, srcLineCount)
       srcLineCount = parsed.lineCount
 
-      this.cache = { src, tokens: parsed.tokens, env: workingEnv, lineCount: srcLineCount, lastSegment: undefined }
+      this.cache = { src, tokens: parsed.tokens, env: workingEnv, lineCount: srcLineCount, lastSegment: undefined, globalStateReason: detectGlobalMarkdownState(src) }
       this.updateCacheLineCount(this.cache, srcLineCount)
       this.stats.total += 1
       this.stats.fullParses += 1
@@ -200,6 +198,41 @@ export class StreamParser {
       return cached.tokens
     }
 
+    let cachedGlobalStateReason = cached.globalStateReason
+    if (cachedGlobalStateReason === undefined) {
+      cachedGlobalStateReason = detectGlobalMarkdownState(cached.src)
+      cached.globalStateReason = cachedGlobalStateReason
+    }
+    const currentGlobalStateReason = detectGlobalMarkdownState(src)
+    const nextGlobalStateReason = cachedGlobalStateReason || currentGlobalStateReason
+    if (nextGlobalStateReason) {
+      const fallbackEnv = envProvided ?? cached.env
+      resetKnownGlobalMarkdownState(fallbackEnv)
+      const parsed = this.parseFullDocument(src, fallbackEnv, md)
+      const nextTokens = parsed.tokens
+      const lineCount = parsed.lineCount
+
+      this.cache = {
+        src,
+        tokens: nextTokens,
+        env: fallbackEnv,
+        lineCount,
+        lastSegment: undefined,
+        globalStateReason: currentGlobalStateReason,
+      }
+      this.updateCacheLineCount(this.cache, lineCount)
+      this.stats.total += 1
+      this.stats.fullParses += 1
+      this.stats.lastMode = 'full'
+      setStrategyDiagnostics(fallbackEnv, {
+        area: 'stream',
+        path: 'stream-full',
+        reason: `global-state:${nextGlobalStateReason}`,
+        unbounded: !!(fallbackEnv as any).__mdtsUnboundedInfo,
+      })
+      return nextTokens
+    }
+
     // For small documents growing from scratch, optimization overhead is not worth it
     // But if we already have a cache, always try to optimize (user is editing)
     const threshold = md.options?.streamOptimizationMinSize ?? this.MIN_SIZE_FOR_OPTIMIZATION
@@ -211,7 +244,7 @@ export class StreamParser {
       const parsed = this.parseFullDocument(src, fallbackEnv, md)
       const nextTokens = parsed.tokens
       const lineCount = parsed.lineCount
-      this.cache = { src, tokens: nextTokens, env: fallbackEnv, lineCount, lastSegment: undefined }
+      this.cache = { src, tokens: nextTokens, env: fallbackEnv, lineCount, lastSegment: undefined, globalStateReason: detectGlobalMarkdownState(src) }
       this.updateCacheLineCount(this.cache, lineCount)
       this.stats.total += 1
       this.stats.fullParses += 1
@@ -557,6 +590,7 @@ export class StreamParser {
 
       // Update cache with new src and line count
       cached.src = src
+      cached.globalStateReason = detectGlobalMarkdownState(src)
       const appendedLines = appendedLineCount ?? countLines(appended)
       cached.lineCount = cachedLineCount + appendedLines
       if (cached.tokens.length > appendStart) {
@@ -644,17 +678,12 @@ export class StreamParser {
           fenceAware: recommendation?.fenceAware ?? chunkFenceAware,
           maxChunks: useMaxChunks,
         })
-        this.cache = { src, tokens, env: fallbackEnv, lineCount: srcLineCount2, lastSegment: undefined }
+        this.cache = { src, tokens, env: fallbackEnv, lineCount: srcLineCount2, lastSegment: undefined, globalStateReason: detectGlobalMarkdownState(src) }
         this.updateCacheLineCount(this.cache, srcLineCount2)
-        this.stats.total += 1
-        this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
-        this.stats.lastMode = 'chunked'
-        setStrategyDiagnostics(fallbackEnv, {
-          area: 'stream',
-          path: 'stream-chunked',
-          chunked: true,
-          reason: wantsChunking ? 'explicit-fallback-large-doc' : 'default-fallback-large-doc',
-        })
+        this.recordChunkedParseResult(
+          fallbackEnv,
+          wantsChunking ? 'explicit-fallback-large-doc' : 'default-fallback-large-doc',
+        )
         return tokens
       }
     }
@@ -663,13 +692,49 @@ export class StreamParser {
     const parsed = this.parseFullDocument(src, fallbackEnv, md, srcLineCount2)
     const nextTokens = parsed.tokens
     srcLineCount2 = parsed.lineCount
-    this.cache = { src, tokens: nextTokens, env: fallbackEnv, lineCount: srcLineCount2, lastSegment: undefined }
+    this.cache = { src, tokens: nextTokens, env: fallbackEnv, lineCount: srcLineCount2, lastSegment: undefined, globalStateReason: detectGlobalMarkdownState(src) }
     this.updateCacheLineCount(this.cache, srcLineCount2)
     this.stats.total += 1
     this.stats.fullParses += 1
     this.stats.lastMode = 'full'
     setStrategyDiagnostics(fallbackEnv, { area: 'stream', path: 'stream-full', reason: 'fallback-full', unbounded: !!(fallbackEnv as any).__mdtsUnboundedInfo })
     return nextTokens
+  }
+
+  private recordChunkedParseResult(
+    env: Record<string, unknown>,
+    chunkReason: string,
+  ): void {
+    const chunkInfo = (env as any).__mdtsChunkInfo
+    const fallbackReason = chunkInfo?.fallback
+      ? String(chunkInfo.fallbackReason || 'global-state')
+      : null
+
+    this.stats.total += 1
+
+    if (fallbackReason) {
+      this.stats.fullParses += 1
+      this.stats.lastMode = 'full'
+
+      setStrategyDiagnostics(env, {
+        area: 'stream',
+        path: 'stream-full',
+        reason: `global-state:${fallbackReason}`,
+        unbounded: !!(env as any).__mdtsUnboundedInfo,
+      })
+
+      return
+    }
+
+    this.stats.chunkedParses = (this.stats.chunkedParses || 0) + 1
+    this.stats.lastMode = 'chunked'
+
+    setStrategyDiagnostics(env, {
+      area: 'stream',
+      path: 'stream-chunked',
+      chunked: true,
+      reason: chunkReason,
+    })
   }
 
   private parseFullDocument(
@@ -679,6 +744,10 @@ export class StreamParser {
     knownLineCount?: number,
     needLineCount = true,
   ): { tokens: Token[], lineCount: number } {
+    const currentGlobalStateReason = detectGlobalMarkdownState(src)
+    if (getKnownGlobalMarkdownState(env))
+      resetKnownGlobalMarkdownState(env)
+
     const autoUnboundedDecision = getAutoUnboundedDecision(md, src.length, knownLineCount)
     if (autoUnboundedDecision === 'yes') {
       setStrategyDiagnostics(env, { area: 'stream', path: 'stream-full', reason: 'auto-unbounded-char-threshold', unbounded: true })
@@ -700,7 +769,11 @@ export class StreamParser {
     if (lineCount === undefined)
       lineCount = needLineCount ? countLines(src) : 0
 
-    return { tokens: this.core.parse(src, env, md).tokens, lineCount }
+    const tokens = runWithKnownGlobalMarkdownState(env, currentGlobalStateReason, () => {
+      return this.core.parse(src, env, md).tokens
+    })
+
+    return { tokens, lineCount }
   }
 
   private shouldUseUnboundedAppend(src: string, _cached: StreamCache, appended: string): boolean {
@@ -819,6 +892,7 @@ export class StreamParser {
 
       cached.src = src
       cached.env = env
+      cached.globalStateReason = detectGlobalMarkdownState(src)
       cached.tokens.length = lastSegment.tokenStart
       this.appendTokens(cached.tokens, tailState.tokens)
       cached.lineCount = countLines(src)
@@ -1114,6 +1188,7 @@ export class StreamParser {
     cached.tokens.splice(cached.tokens.length - 1, 0, ...inserted)
     cached.src = src
     cached.env = env
+    cached.globalStateReason = detectGlobalMarkdownState(src)
     cached.lineCount = countLines(src)
     if (listOpen.map)
       listOpen.map[1] = this.getDocLineCount(src)
@@ -1184,6 +1259,7 @@ export class StreamParser {
     cached.tokens.splice(insertAt, 0, ...inserted)
     cached.src = src
     cached.env = env
+    cached.globalStateReason = detectGlobalMarkdownState(src)
     cached.lineCount = countLines(src)
 
     const nextDocLineCount = this.getDocLineCount(src)

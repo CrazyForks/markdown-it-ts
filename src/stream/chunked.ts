@@ -1,11 +1,13 @@
 import type { Token } from '../common/token'
 import type { MarkdownIt } from '../index'
+import { detectGlobalMarkdownState, runWithKnownGlobalMarkdownState } from '../parse/global_state'
 
 export interface ChunkedOptions {
   maxChunkChars?: number // hard limit per chunk by characters
   maxChunkLines?: number // hard limit per chunk by lines
   fenceAware?: boolean // avoid splitting inside fenced code blocks
   maxChunks?: number // optional cap on number of chunks; if exceeded, ranges are rebalanced
+  fallbackOnGlobalState?: boolean
 }
 
 export interface ChunkRange {
@@ -14,11 +16,14 @@ export interface ChunkRange {
   lineCount: number
 }
 
+type ChunkSplitOptions = Required<Omit<ChunkedOptions, 'maxChunks' | 'fallbackOnGlobalState'>> & { maxChunks?: number }
+
 const DEFAULTS: Required<Omit<ChunkedOptions, 'maxChunks'>> & { maxChunks?: number } = {
   maxChunkChars: 10_000,
   maxChunkLines: 200,
   fenceAware: true,
   maxChunks: undefined,
+  fallbackOnGlobalState: true,
 }
 
 /**
@@ -30,6 +35,26 @@ const DEFAULTS: Required<Omit<ChunkedOptions, 'maxChunks'>> & { maxChunks?: numb
  */
 export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, unknown> = {}, opts?: ChunkedOptions): Token[] {
   const options = { ...DEFAULTS, ...(opts || {}) }
+  const currentGlobalStateReason = detectGlobalMarkdownState(src)
+
+  if (options.fallbackOnGlobalState !== false && currentGlobalStateReason) {
+    try {
+      ;(env as any).__mdtsChunkInfo = {
+        count: 1,
+        fallback: true,
+        fallbackReason: currentGlobalStateReason,
+        globalStateDetected: currentGlobalStateReason,
+        maxChunkChars: options.maxChunkChars,
+        maxChunkLines: options.maxChunkLines,
+      }
+    }
+    catch {}
+
+    return runWithKnownGlobalMarkdownState(env, currentGlobalStateReason, () => {
+      return md.core.parse(src, env, md).tokens
+    })
+  }
+
   let ranges = splitIntoChunkRanges(src, options)
 
   // Enforce maxChunks by rebalancing adjacent chunks instead of merging
@@ -47,30 +72,34 @@ export function chunkedParse(md: MarkdownIt, src: string, env: Record<string, un
       count: ranges.length,
       maxChunkChars: options.maxChunkChars,
       maxChunkLines: options.maxChunkLines,
+      globalStateDetected: currentGlobalStateReason || undefined,
+      globalStateFallbackDisabled: options.fallbackOnGlobalState === false && !!currentGlobalStateReason,
     }
   }
   catch {}
 
-  for (let i = 0; i < ranges.length; i++) {
-    const range = ranges[i]
-    const ch = src.slice(range.start, range.end)
-    const state = md.core.parse(ch, env, md)
-    const tokens = state.tokens
-    if (lineOffset !== 0 && tokens.length) {
-      shiftTokenLines(tokens, lineOffset)
+  return runWithKnownGlobalMarkdownState(env, currentGlobalStateReason, () => {
+    for (let i = 0; i < ranges.length; i++) {
+      const range = ranges[i]
+      const ch = src.slice(range.start, range.end)
+      const state = md.core.parse(ch, env, md)
+      const tokens = state.tokens
+      if (lineOffset !== 0 && tokens.length) {
+        shiftTokenLines(tokens, lineOffset)
+      }
+      appendTokens(out, tokens)
+      lineOffset += range.lineCount
     }
-    appendTokens(out, tokens)
-    lineOffset += range.lineCount
-  }
 
-  return out
+    return out
+  })
 }
 
 /**
  * Split text into chunks by blank lines without breaking fenced code blocks.
  * Keeps chunk sizes under maxChunkChars/maxChunkLines where possible.
  */
-export function splitIntoChunks(src: string, opts: Required<Omit<ChunkedOptions, 'maxChunks'>> & { maxChunks?: number }): string[] {
+export function splitIntoChunks(src: string, opts: ChunkSplitOptions): string[] {
   const ranges = splitIntoChunkRanges(src, opts)
   const chunks = new Array<string>(ranges.length)
   for (let i = 0; i < ranges.length; i++) {
@@ -81,7 +110,7 @@ export function splitIntoChunks(src: string, opts: Required<Omit<ChunkedOptions,
 
 export function splitIntoChunkRanges(
   src: string,
-  opts: Required<Omit<ChunkedOptions, 'maxChunks'>> & { maxChunks?: number },
+  opts: ChunkSplitOptions,
   final = true,
 ): ChunkRange[] {
   const chunks: ChunkRange[] = []

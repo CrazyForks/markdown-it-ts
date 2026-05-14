@@ -6,6 +6,30 @@
 
 快速入口：[文档索引](./docs/README.md) · [流式/分块优化](./docs/stream-optimization.md) · [性能报告](./docs/perf-report.md) · [兼容性报告](./docs/COMPATIBILITY_REPORT.md)
 
+> **运行时说明**
+>
+> `markdown-it-ts` 是 ESM-only 包，要求 Node.js >= 18。
+>
+> ```js
+> import MarkdownIt from 'markdown-it-ts'
+> ```
+>
+> 如果你的项目仍然是 CommonJS，请在 async 函数里使用动态导入：
+>
+> ```js
+> async function main() {
+>   const { default: MarkdownIt } = await import('markdown-it-ts')
+>
+>   const md = MarkdownIt()
+>   console.log(md.render('# ok'))
+> }
+>
+> main().catch((error) => {
+>   console.error(error)
+>   process.exitCode = 1
+> })
+> ```
+
 一个在 [markdown-it](https://github.com/markdown-it/markdown-it) 基础上重构的 TypeScript 版本，采用更模块化的架构，支持 tree-shaking，并将 parse/render 职责解耦。
 
 ## 安装
@@ -64,6 +88,26 @@ md.parseIterableToSink(fileChunks, (tokens, info) => {
 ```
 
 如果是任意位置的中间编辑，可以用 `EditableBuffer`。它内部用 piece-table 保存源码，并从受影响块之前的锚点开始重解析，而不是每次都把整篇文本重新摊平成一个大字符串再 full parse。现在 full parse 和局部重解析都会直接把 `PieceTableSourceView` 交给 `md.core.parseSource(...)`，因此被解析的区间也不需要先物化成一个超大的中间字符串。
+
+### chunked / streaming 正确性说明
+
+Markdown 并不总是 chunk-local 的语言。某些语法依赖整篇文档状态，例如 reference definitions、footnote definitions、abbreviation definitions，以及插件自定义的全局状态。
+
+`chunkedParse()` 和完整字符串的 unbounded parsing 默认采用 correctness-first 策略：遇到已知全局状态语法时会 fallback 到 full parse。
+
+Iterable/sink 解析偏 streaming 场景；它不一定能在提交前面的 chunk 前看到后续的 reference/footnote/abbr definition。因此如果需要严格 full-parse 等价，包含全局定义的文档应优先使用完整字符串解析，或避免过早 flush。
+
+检测器是保守的：即使 definition-like 文本出现在代码块或普通文本里，也可能触发 fallback。这个策略优先保证正确性，而不是极限性能。
+
+你可以显式关闭 fallback：
+
+```ts
+chunkedParse(md, source, env, {
+  fallbackOnGlobalState: false,
+})
+```
+
+关闭 fallback 属于性能优先模式；对于包含全局状态的文档，输出可能和 full parse 不一致。
 
 需要异步渲染规则（例如异步语法高亮）？使用 `renderAsync`，它会等待异步规则的结果：
 
