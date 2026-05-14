@@ -44,7 +44,7 @@
 - **语言与打包**：`markdown-it-ts` 使用 TypeScript 实现，并以 ESM-only package exports 发布。
 - **运行时**：要求 Node.js >= 18。
 - **子路径导出**：请使用文档化的 `markdown-it-ts/...` exports，不要依赖上游私有路径。
-- **Renderer 集成**：主入口包含 `render`、`renderInline`、`renderAsync` 和 `renderer`；`withRenderer` 保留给 custom/core-shaped instance。
+- **Renderer 集成**：主入口包含 `render`、`renderInline`、`renderAsync`、`renderer` 和 advanced `withRenderer`；`markdown-it-ts/plugins/with-renderer` 也保留给 custom/core-shaped instance。
 - **大输入 API**：`stream`、`chunkedParse`、`StreamBuffer`、`UnboundedBuffer`、`EditableBuffer` 是本包扩展能力，只适合特定输入形态，并有独立正确性边界；它们从 `markdown-it-ts/experimental` 导入，部分 helper 也可从 `markdown-it-ts/stream/buffer`、`markdown-it-ts/stream/chunked`、`markdown-it-ts/stream/debounced`、`markdown-it-ts/support/chunk_recommend` 导入，不从 1.0 根入口导出。
 
 ## 导入示例

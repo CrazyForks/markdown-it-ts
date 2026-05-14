@@ -87,7 +87,7 @@ jobs:
           mkdir -p /tmp/markdown-it-ts-smoke
           cd /tmp/markdown-it-ts-smoke
           printf '{"type":"module"}\n' > package.json
-          pnpm add "$PKG" typescript@^5.9.3
+          pnpm add "$PKG"
 
           cat > smoke.mjs <<'EOF'
           import MarkdownIt from 'markdown-it-ts'
@@ -128,7 +128,21 @@ jobs:
           if (html !== '<h1>ok</h1>\n')
             throw new Error(`unexpected render output: ${html}`)
 
-          for (const name of ['chunkedParse', 'StreamBuffer', 'UnboundedBuffer', 'EditableBuffer', 'PieceTable', 'parseIterable', 'recommendFullChunkStrategy']) {
+          for (const name of [
+            'chunkedParse',
+            'StreamBuffer',
+            'UnboundedBuffer',
+            'EditableBuffer',
+            'PieceTable',
+            'parseIterable',
+            'parseAsyncIterable',
+            'parseIterableToSink',
+            'parseAsyncIterableToSink',
+            'recommendFullChunkStrategy',
+            'recommendStreamChunkStrategy',
+            'DebouncedStreamParser',
+            'ThrottledStreamParser',
+          ]) {
             if (name in rootExports)
               throw new Error(`${name} should be imported from markdown-it-ts/experimental or a subpath`)
           }
@@ -201,148 +215,7 @@ jobs:
           EOF
 
           node smoke.mjs
-
-          cat > smoke.ts <<'EOF'
-          import MarkdownIt, {
-            type MarkdownIt as MarkdownItInstance,
-            type MarkdownItPlugin,
-          } from 'markdown-it-ts'
-          import { withRenderer } from 'markdown-it-ts/plugins/with-renderer'
-          import Renderer from 'markdown-it-ts/render/renderer'
-          import { StreamBuffer as StreamBufferSubpath } from 'markdown-it-ts/stream/buffer'
-          import { chunkedParse as chunkedParseSubpath } from 'markdown-it-ts/stream/chunked'
-          import {
-            DebouncedStreamParser,
-            ThrottledStreamParser,
-          } from 'markdown-it-ts/stream/debounced'
-          import {
-            recommendFullChunkStrategy,
-            recommendStreamChunkStrategy,
-          } from 'markdown-it-ts/support/chunk_recommend'
-          import {
-            ParserCore,
-            Token as CoreToken,
-          } from 'markdown-it-ts/core'
-          import {
-            EditableBuffer as ExperimentalEditableBuffer,
-            PieceTable as ExperimentalPieceTable,
-            StreamBuffer as ExperimentalStreamBuffer,
-            UnboundedBuffer as ExperimentalUnboundedBuffer,
-            parseAsyncIterable as experimentalParseAsyncIterable,
-            parseAsyncIterableToSink as experimentalParseAsyncIterableToSink,
-            parseIterable as experimentalParseIterable,
-            parseIterableToSink as experimentalParseIterableToSink,
-            chunkedParse as experimentalChunkedParse,
-          } from 'markdown-it-ts/experimental'
-          import { Token } from 'markdown-it-ts/common/token'
-          import { countLines, escapeHtml } from 'markdown-it-ts/common/utils'
-
-          const plugin: MarkdownItPlugin = (md) => {
-            md.core.ruler.after('inline', 'typed_smoke_rule', () => {})
-          }
-
-          const md = MarkdownIt().use(plugin)
-          const html: string = md.render('# typed')
-          const tokens = md.parseIterable(['# typed\n'])
-          const renderer = new Renderer()
-          const token = new Token('text', '', 0)
-          const core = new ParserCore()
-          const coreToken = new CoreToken('text', '', 0)
-          const typedMd: MarkdownItInstance = md
-          const patched: MarkdownItInstance = withRenderer(typedMd)
-
-          void html
-          void tokens
-          void renderer
-          void token
-          void patched
-          void StreamBufferSubpath
-          void chunkedParseSubpath
-          void DebouncedStreamParser
-          void ThrottledStreamParser
-          void recommendFullChunkStrategy
-          void recommendStreamChunkStrategy
-          void core
-          void coreToken
-          void ExperimentalStreamBuffer
-          void ExperimentalEditableBuffer
-          void ExperimentalPieceTable
-          void ExperimentalUnboundedBuffer
-          void experimentalParseIterable
-          void experimentalParseAsyncIterable
-          void experimentalParseIterableToSink
-          void experimentalParseAsyncIterableToSink
-          void experimentalChunkedParse
-          void countLines
-          void escapeHtml
-          EOF
-
-          pnpm exec tsc smoke.ts \
-            --module NodeNext \
-            --moduleResolution NodeNext \
-            --target ES2022 \
-            --strict \
-            --noEmit
-
-          cat > negative-smoke.ts <<'EOF'
-          // @ts-expect-error chunkedParse must not be a root named export.
-          import { chunkedParse } from 'markdown-it-ts'
-
-          // @ts-expect-error StreamBuffer must not be a root named export.
-          import { StreamBuffer } from 'markdown-it-ts'
-
-          // @ts-expect-error UnboundedBuffer must not be a root named export.
-          import { UnboundedBuffer } from 'markdown-it-ts'
-
-          // @ts-expect-error EditableBuffer must not be a root named export.
-          import { EditableBuffer } from 'markdown-it-ts'
-
-          // @ts-expect-error PieceTable must not be a root named export.
-          import { PieceTable } from 'markdown-it-ts'
-
-          // @ts-expect-error parseIterable must not be a root named export.
-          import { parseIterable } from 'markdown-it-ts'
-
-          // @ts-expect-error parseAsyncIterable must not be a root named export.
-          import { parseAsyncIterable } from 'markdown-it-ts'
-
-          // @ts-expect-error parseIterableToSink must not be a root named export.
-          import { parseIterableToSink } from 'markdown-it-ts'
-
-          // @ts-expect-error parseAsyncIterableToSink must not be a root named export.
-          import { parseAsyncIterableToSink } from 'markdown-it-ts'
-
-          // @ts-expect-error recommendFullChunkStrategy must not be a root named export.
-          import { recommendFullChunkStrategy } from 'markdown-it-ts'
-
-          // @ts-expect-error recommendStreamChunkStrategy must not be a root named export.
-          import { recommendStreamChunkStrategy } from 'markdown-it-ts'
-
-          // @ts-expect-error DebouncedStreamParser must not be a root named export.
-          import { DebouncedStreamParser } from 'markdown-it-ts'
-
-          // @ts-expect-error ThrottledStreamParser must not be a root named export.
-          import { ThrottledStreamParser } from 'markdown-it-ts'
-
-          // @ts-expect-error ChunkedOptions must not be a root named export.
-          import type { ChunkedOptions } from 'markdown-it-ts'
-
-          // @ts-expect-error EditableBufferStats must not be a root named export.
-          import type { EditableBufferStats } from 'markdown-it-ts'
-
-          // @ts-expect-error PieceTableStats must not be a root named export.
-          import type { PieceTableStats } from 'markdown-it-ts'
-
-          // @ts-expect-error UnboundedBufferOptions must not be a root named export.
-          import type { UnboundedBufferOptions } from 'markdown-it-ts'
-          EOF
-
-          pnpm exec tsc negative-smoke.ts \
-            --module NodeNext \
-            --moduleResolution NodeNext \
-            --target ES2022 \
-            --strict \
-            --noEmit
+          node "$GITHUB_WORKSPACE/scripts/package-type-smoke.mjs" "$PKG"
 
       - name: Bundler smoke packed package
         if: matrix.node == 20
@@ -424,7 +297,21 @@ jobs:
           if (html !== '<h1>ok</h1>\n')
             throw new Error(`unexpected render output: ${html}`)
 
-          for (const name of ['chunkedParse', 'StreamBuffer', 'parseIterable']) {
+          for (const name of [
+            'chunkedParse',
+            'StreamBuffer',
+            'UnboundedBuffer',
+            'EditableBuffer',
+            'PieceTable',
+            'parseIterable',
+            'parseAsyncIterable',
+            'parseIterableToSink',
+            'parseAsyncIterableToSink',
+            'recommendFullChunkStrategy',
+            'recommendStreamChunkStrategy',
+            'DebouncedStreamParser',
+            'ThrottledStreamParser',
+          ]) {
             if (name in rootExports)
               throw new Error(`${name} should be imported from markdown-it-ts/experimental or a subpath`)
           }

@@ -18,6 +18,9 @@ interface DemoEnv extends RendererEnv {
   touchedByCore?: boolean
 }
 
+type IsAny<T> = 0 extends (1 & T) ? true : false
+type ExpectFalse<T extends false> = T
+
 const plugin: MarkdownItPlugin = (md, classNameParam) => {
   const className = typeof classNameParam === 'string' ? classNameParam : 'typed'
   md.renderer.rules.heading_open = ((tokens, idx, options, env, self) => {
@@ -29,16 +32,38 @@ const plugin: MarkdownItPlugin = (md, classNameParam) => {
   }) satisfies RendererRule
 
   md.core.ruler.after('inline', 'typed_core_rule', (state) => {
+    type CoreStateIsTyped = ExpectFalse<IsAny<typeof state>>
+    const inlineMode: boolean = state.inlineMode
+    const tokens: Token[] = state.tokens
+    void inlineMode
+    void tokens
+    void (null as unknown as CoreStateIsTyped)
     ;(state.env as DemoEnv).touchedByCore = true
   })
 
   md.block.ruler.before('paragraph', 'typed_block_rule', (state, startLine, _endLine, silent) => {
+    type BlockStateIsTyped = ExpectFalse<IsAny<typeof state>>
+    const line: number = state.line
+    const parentType: string = state.parentType
+    const push: (type: string, tag: string, nesting: number) => Token = state.push.bind(state)
+    void line
+    void parentType
+    void push
+    void (null as unknown as BlockStateIsTyped)
     if (!silent)
       state.line = startLine
     return false
   })
 
   md.inline.ruler.before('text', 'typed_inline_rule', (state, silent) => {
+    type InlineStateIsTyped = ExpectFalse<IsAny<typeof state>>
+    const pos: number = state.pos
+    const pending: string = state.pending
+    const push: (type: string, tag: string, nesting: number) => Token = state.push.bind(state)
+    void pos
+    void pending
+    void push
+    void (null as unknown as InlineStateIsTyped)
     if (!silent)
       state.pending += ''
     return false

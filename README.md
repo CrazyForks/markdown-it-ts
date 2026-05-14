@@ -39,7 +39,7 @@ A TypeScript migration of [markdown-it](https://github.com/markdown-it/markdown-
 | Level | API surface |
 | --- | --- |
 | Stable target | `MarkdownIt()`, `parse`, `render`, `renderInline`, `renderAsync`, `renderer.rules`, `Token`, and public ruler/plugin APIs |
-| Advanced | Documented subpath exports such as `core`, renderer helpers, and common utilities |
+| Advanced | Root `withRenderer`, documented subpath exports such as `core`, renderer helpers, and common utilities |
 | Experimental | `stream`, `chunkedParse`, `StreamBuffer`, `UnboundedBuffer`, `EditableBuffer`, `PieceTable`, iterable/sink parsing, and chunk strategy recommenders via `markdown-it-ts/experimental`; selected helpers also have explicit subpaths such as `markdown-it-ts/stream/buffer`, `markdown-it-ts/stream/chunked`, `markdown-it-ts/stream/debounced`, and `markdown-it-ts/support/chunk_recommend` |
 
 The root entry no longer exposes experimental helpers as top-level named exports. Some large-input helpers remain available as experimental instance methods for compatibility, but they are not part of the stable markdown-it compatibility contract.
@@ -204,7 +204,7 @@ const html = await md.renderAsync('# Hello World', {
 })
 ```
 
-The main package entry already includes `render`, `renderAsync`, `renderInline`, and `renderer`. The `withRenderer` subpath is kept as a helper for custom/core-shaped instances; normal `markdown-it-ts` users do not need to call it.
+The main package entry already includes `render`, `renderAsync`, `renderInline`, `renderer`, and the advanced `withRenderer` helper. `markdown-it-ts/plugins/with-renderer` is also kept for custom/core-shaped instances; normal `markdown-it-ts` users do not need to call it.
 
 ## Documentation
 

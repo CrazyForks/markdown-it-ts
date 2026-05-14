@@ -7,6 +7,7 @@
 - Removed experimental stream, chunk, editable, and strategy helpers from root named exports.
 - Import large-input helpers from `markdown-it-ts/experimental` or explicit subpaths instead of `markdown-it-ts`.
 - `markdown-it-ts` is ESM-only and requires Node.js >= 18.
+- `withRenderer` remains available as an advanced helper from the root entry and `markdown-it-ts/plugins/with-renderer`.
 
 ### Migration
 
