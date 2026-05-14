@@ -543,6 +543,30 @@ export class StreamParser {
         const a = appendedState.tokens
         const maxCheck = Math.min(cachedTail.length, a.length)
 
+        function attrsEqual(a?: [string, string][] | null, b?: [string, string][] | null) {
+          if (!a && !b)
+            return true
+          if (!a || !b || a.length !== b.length)
+            return false
+          for (let i = 0; i < a.length; i++) {
+            if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1])
+              return false
+          }
+          return true
+        }
+
+        function childrenEqual(a?: any[] | null, b?: any[] | null) {
+          if (!a && !b)
+            return true
+          if (!a || !b || a.length !== b.length)
+            return false
+          for (let i = 0; i < a.length; i++) {
+            if (!tokenEquals(a[i], b[i]))
+              return false
+          }
+          return true
+        }
+
         function tokenEquals(x: any, y: any) {
           if (!x || !y)
             return false
@@ -559,6 +583,10 @@ export class StreamParser {
           if (x.markup !== y.markup || x.info !== y.info)
             return false
           if (x.block !== y.block || x.hidden !== y.hidden)
+            return false
+          if (!attrsEqual(x.attrs, y.attrs))
+            return false
+          if (!childrenEqual(x.children, y.children))
             return false
           if (x.type === 'inline')
             return (x.content || '') === (y.content || '')

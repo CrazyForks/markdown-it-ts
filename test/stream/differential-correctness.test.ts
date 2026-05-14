@@ -132,6 +132,8 @@ describe('stream parser differential correctness', () => {
       '> inserted quote\n> continued quote\n\n',
       '```ts\nconst inserted = true\n```\n\n',
       '| a | b |\n| - | - |\n| 1 | 2 |\n\n',
+      '| left | right |\n|:-----|------:|\n| a | b |\n\n',
+      '![alt text](https://example.com/img.png "title")\n\n',
       '### Inserted heading\n\n',
     ]
     let rng = 0x5eed1234
