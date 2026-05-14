@@ -4,7 +4,7 @@ import type { GlobalMarkdownStateReason } from '../parse/global_state'
 import type { ParserCore } from '../parse/parser_core'
 import { countLines } from '../common/utils'
 import { detectGlobalMarkdownState, getKnownGlobalMarkdownState, resetKnownGlobalMarkdownState, runWithKnownGlobalMarkdownState } from '../parse/global_state'
-import { setStrategyDiagnostics } from '../parse/strategy_diagnostics'
+import { beginParseDiagnostics, getParseDiagnostics, setStrategyDiagnostics } from '../parse/strategy_diagnostics'
 import { recommendStreamChunkStrategy } from '../support/chunk_recommend'
 import { chunkedParse } from './chunked'
 import { getAutoUnboundedDecision, parseStringUnbounded, shouldAutoUseUnbounded } from './unbounded'
@@ -99,6 +99,7 @@ export class StreamParser {
   parse(src: string, env: Record<string, unknown> | undefined, md: MarkdownIt): Token[] {
     const envProvided = env
     const cached = this.cache
+    beginParseDiagnostics(envProvided ?? cached?.env)
 
     // Only update the cache on the very first parse or when the current
     // source ends at a safe block boundary (double newline). This prevents
@@ -107,8 +108,11 @@ export class StreamParser {
 
       // Allow chunked for first parse when enabled and large enough
       const explicitChunkFallbackSetting = !!(md as any).__explicitStreamChunkFallbackSetting
+      const canImplicitLargeInput = typeof (md as any).__canUseImplicitLargeInputStrategy === 'function'
+        ? (md as any).__canUseImplicitLargeInputStrategy()
+        : true
       const wantsChunking = !!md.options?.streamChunkedFallback
-      const allowImplicitChunk = !explicitChunkFallbackSetting
+      const allowImplicitChunk = !explicitChunkFallbackSetting && canImplicitLargeInput
       const chunkedEnabled = wantsChunking || allowImplicitChunk
       const chunkAdaptive = md.options?.streamChunkAdaptive !== false
       const targetChunks = md.options?.streamChunkTargetChunks ?? 8
@@ -137,7 +141,7 @@ export class StreamParser {
         this.stats.total += 1
         this.stats.fullParses += 1
         this.stats.lastMode = 'full'
-        setStrategyDiagnostics(workingEnv, { area: 'stream', path: 'stream-full', reason: 'skip-cache-large-one-shot', unbounded: !!(workingEnv as any).__mdtsUnboundedInfo })
+        setStrategyDiagnostics(workingEnv, { area: 'stream', path: 'stream-full', reason: 'skip-cache-large-one-shot', unbounded: !!getParseDiagnostics(workingEnv)?.unbounded })
         return parsed.tokens
       }
       else if (chunkedEnabled) {
@@ -186,7 +190,7 @@ export class StreamParser {
       this.stats.total += 1
       this.stats.fullParses += 1
       this.stats.lastMode = 'full'
-      setStrategyDiagnostics(workingEnv, { area: 'stream', path: 'stream-full', reason: 'initial-parse', unbounded: !!(workingEnv as any).__mdtsUnboundedInfo })
+      setStrategyDiagnostics(workingEnv, { area: 'stream', path: 'stream-full', reason: 'initial-parse', unbounded: !!getParseDiagnostics(workingEnv)?.unbounded })
       return parsed.tokens
     }
 
@@ -228,7 +232,7 @@ export class StreamParser {
         area: 'stream',
         path: 'stream-full',
         reason: `global-state:${nextGlobalStateReason}`,
-        unbounded: !!(fallbackEnv as any).__mdtsUnboundedInfo,
+        unbounded: !!getParseDiagnostics(fallbackEnv)?.unbounded,
       })
       return nextTokens
     }
@@ -249,7 +253,7 @@ export class StreamParser {
       this.stats.total += 1
       this.stats.fullParses += 1
       this.stats.lastMode = 'full'
-      setStrategyDiagnostics(fallbackEnv, { area: 'stream', path: 'stream-full', reason: 'small-non-append', unbounded: !!(fallbackEnv as any).__mdtsUnboundedInfo })
+      setStrategyDiagnostics(fallbackEnv, { area: 'stream', path: 'stream-full', reason: 'small-non-append', unbounded: !!getParseDiagnostics(fallbackEnv)?.unbounded })
       return nextTokens
     }
 
@@ -673,8 +677,11 @@ export class StreamParser {
 
     // Optional: use chunked parse as a fallback for very large documents
     const explicitChunkFallbackSetting = !!(md as any).__explicitStreamChunkFallbackSetting
+    const canImplicitLargeInput = typeof (md as any).__canUseImplicitLargeInputStrategy === 'function'
+      ? (md as any).__canUseImplicitLargeInputStrategy()
+      : true
     const wantsChunking = !!md.options?.streamChunkedFallback
-    const allowImplicitChunk = !explicitChunkFallbackSetting && !appended
+    const allowImplicitChunk = !explicitChunkFallbackSetting && !appended && canImplicitLargeInput
     const chunkedEnabled = wantsChunking || allowImplicitChunk
     const chunkAdaptive = md.options?.streamChunkAdaptive !== false
     const targetChunks = md.options?.streamChunkTargetChunks ?? 8
@@ -733,7 +740,7 @@ export class StreamParser {
     this.stats.total += 1
     this.stats.fullParses += 1
     this.stats.lastMode = 'full'
-    setStrategyDiagnostics(fallbackEnv, { area: 'stream', path: 'stream-full', reason: 'fallback-full', unbounded: !!(fallbackEnv as any).__mdtsUnboundedInfo })
+    setStrategyDiagnostics(fallbackEnv, { area: 'stream', path: 'stream-full', reason: 'fallback-full', unbounded: !!getParseDiagnostics(fallbackEnv)?.unbounded })
     return nextTokens
   }
 
@@ -741,7 +748,7 @@ export class StreamParser {
     env: Record<string, unknown>,
     chunkReason: string,
   ): void {
-    const chunkInfo = (env as any).__mdtsChunkInfo
+    const chunkInfo = getParseDiagnostics(env)?.chunk
     const fallbackReason = chunkInfo?.fallback
       ? String(chunkInfo.fallbackReason || 'global-state')
       : null
@@ -756,7 +763,7 @@ export class StreamParser {
         area: 'stream',
         path: 'stream-full',
         reason: `global-state:${fallbackReason}`,
-        unbounded: !!(env as any).__mdtsUnboundedInfo,
+        unbounded: !!getParseDiagnostics(env)?.unbounded,
       })
 
       return
@@ -784,11 +791,17 @@ export class StreamParser {
     if (getKnownGlobalMarkdownState(env))
       resetKnownGlobalMarkdownState(env)
 
-    const autoUnboundedDecision = getAutoUnboundedDecision(md, src.length, knownLineCount)
+    const canUseAutoUnbounded = typeof (md as any).__canUseImplicitLargeInputStrategy === 'function'
+      ? (md as any).__canUseImplicitLargeInputStrategy()
+      : true
+    const autoUnboundedDecision = canUseAutoUnbounded
+      ? getAutoUnboundedDecision(md, src.length, knownLineCount)
+      : 'no'
     if (autoUnboundedDecision === 'yes') {
+      const tokens = parseStringUnbounded(md, src, env)
       setStrategyDiagnostics(env, { area: 'stream', path: 'stream-full', reason: 'auto-unbounded-char-threshold', unbounded: true })
       return {
-        tokens: parseStringUnbounded(md, src, env),
+        tokens,
         lineCount: knownLineCount ?? (needLineCount ? countLines(src) : 0),
       }
     }
@@ -797,8 +810,9 @@ export class StreamParser {
     if (autoUnboundedDecision === 'need-lines') {
       lineCount = countLines(src)
       if (shouldAutoUseUnbounded(md, src.length, lineCount)) {
+        const tokens = parseStringUnbounded(md, src, env)
         setStrategyDiagnostics(env, { area: 'stream', path: 'stream-full', reason: 'auto-unbounded-line-threshold', unbounded: true })
-        return { tokens: parseStringUnbounded(md, src, env), lineCount }
+        return { tokens, lineCount }
       }
     }
 

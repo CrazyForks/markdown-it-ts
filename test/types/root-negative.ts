@@ -1,6 +1,15 @@
 // @ts-expect-error chunkedParse must not be a root named export.
 import { chunkedParse } from 'markdown-it-ts'
 
+// @ts-expect-error getParseDiagnostics must not be a root named export.
+import { getParseDiagnostics } from 'markdown-it-ts'
+
+// @ts-expect-error clearParseDiagnostics must not be a root named export.
+import { clearParseDiagnostics } from 'markdown-it-ts'
+
+// @ts-expect-error MDTS_DIAGNOSTICS must not be a root named export.
+import { MDTS_DIAGNOSTICS } from 'markdown-it-ts'
+
 // @ts-expect-error StreamBuffer must not be a root named export.
 import { StreamBuffer } from 'markdown-it-ts'
 

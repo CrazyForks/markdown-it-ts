@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import markdownit from '../../src/index'
-import { EditableBuffer } from '../../src/experimental'
+import { EditableBuffer, getParseDiagnostics } from '../../src/experimental'
 
 describe('EditableBuffer correctness fallback', () => {
   it('falls back to full parse when inserting reference definitions', () => {
@@ -15,7 +15,7 @@ describe('EditableBuffer correctness fallback', () => {
 
     expect(html).toBe(md.render(buffer.toString()))
     expect(buffer.stats().lastMode).toBe('full')
-    expect((env as any).__mdtsEditableInfo).toMatchObject({
+    expect(getParseDiagnostics(env)?.editable).toMatchObject({
       fallback: true,
       fallbackReason: 'reference-definition',
     })
@@ -34,7 +34,7 @@ describe('EditableBuffer correctness fallback', () => {
     expect(html).toBe(md.render(buffer.toString()))
     expect(html).toContain('href="https://example.com"')
     expect(buffer.stats().lastMode).toBe('full')
-    expect((env as any).__mdtsEditableInfo).toMatchObject({
+    expect(getParseDiagnostics(env)?.editable).toMatchObject({
       fallback: true,
       fallbackReason: 'reference-definition',
     })
@@ -65,7 +65,7 @@ describe('EditableBuffer correctness fallback', () => {
 
     expect(html).toBe(md.render(buffer.toString()))
     expect(buffer.stats().lastMode).toBe('full')
-    expect((env as any).__mdtsEditableInfo).toMatchObject({
+    expect(getParseDiagnostics(env)?.editable).toMatchObject({
       fallback: true,
       fallbackReason: 'reference-definition',
     })
@@ -92,7 +92,7 @@ describe('EditableBuffer correctness fallback', () => {
 
     expect(html).toBe(md.render(buffer.toString()))
     expect(buffer.stats().lastMode).toBe('full')
-    expect((env as any).__mdtsEditableInfo).toMatchObject({
+    expect(getParseDiagnostics(env)?.editable).toMatchObject({
       fallback: true,
       fallbackReason: 'reference-definition',
     })
@@ -120,6 +120,28 @@ describe('EditableBuffer correctness fallback', () => {
     expect(html).toBe(md.render(buffer.toString()))
     expect(html).toContain('href="https://new.example"')
     expect(html).not.toContain('https://old.example')
+  })
+
+  it('clears stale editable diagnostics when reusing env for non-fallback operations', () => {
+    const md = markdownit()
+    const buffer = new EditableBuffer(md, '[x][ref]\n\nplain\n')
+    const env: Record<string, unknown> = {}
+
+    buffer.parse()
+    buffer.append('\n[ref]: https://example.com\n', env)
+
+    expect(getParseDiagnostics(env)?.editable).toMatchObject({
+      fallback: true,
+      fallbackReason: 'reference-definition',
+    })
+
+    buffer.reset('alpha\n\nbeta\n')
+    buffer.parse(env)
+    expect(getParseDiagnostics(env)?.editable).toBeUndefined()
+
+    const start = buffer.toString().indexOf('beta')
+    buffer.replace(start, start + 'beta'.length, 'beta updated', env)
+    expect(getParseDiagnostics(env)?.editable).toBeUndefined()
   })
 
   it('restores user-provided env.references after clearing mdts-owned global state', () => {
