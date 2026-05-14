@@ -42,7 +42,7 @@ A TypeScript migration of [markdown-it](https://github.com/markdown-it/markdown-
 | Advanced | Documented subpath exports such as `core`, renderer helpers, and common utilities |
 | Experimental | `stream`, `chunkedParse`, `StreamBuffer`, `UnboundedBuffer`, `EditableBuffer`, `PieceTable`, iterable/sink parsing, and chunk strategy recommenders via `markdown-it-ts/experimental`; selected helpers also have explicit subpaths such as `markdown-it-ts/stream/buffer`, `markdown-it-ts/stream/chunked`, `markdown-it-ts/stream/debounced`, and `markdown-it-ts/support/chunk_recommend` |
 
-The root entry no longer exposes experimental helpers as top-level named exports. Some advanced instance methods and options remain available for existing large-input integrations and are marked experimental in the type declarations.
+The root entry no longer exposes experimental helpers as top-level named exports. Some large-input helpers remain available as experimental instance methods for compatibility, but they are not part of the stable markdown-it compatibility contract.
 
 Common 0.x import migrations:
 
