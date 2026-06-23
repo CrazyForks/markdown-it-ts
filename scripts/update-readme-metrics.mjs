@@ -129,6 +129,20 @@ function buildMicromarkAppendExamples(bySize, sizes) {
   return lines
 }
 
+function buildOxOneExamples(bySize, sizes) {
+  const lines = []
+  for (const size of sizes) {
+    const arr = bySize.get(size)
+    if (!arr) continue
+    const bestTs = pickBestTsBy(arr, 'oneShotMs')
+    const ox = arr.find(r => r.scenario === 'OX1')
+    if (!bestTs || !ox) continue
+    const l = `- ${size.toLocaleString()} chars: ${formatMs(bestTs.oneShotMs)} vs ${formatMs(ox.oneShotMs)} → ${formatComparisonSummary(ox.oneShotMs, bestTs.oneShotMs)}`
+    lines.push(l)
+  }
+  return lines
+}
+
 function buildRenderVsMarkdownIt(bySize, sizes) {
   const lines = []
   for (const size of sizes) {
@@ -138,6 +152,20 @@ function buildRenderVsMarkdownIt(bySize, sizes) {
     const baseline = arr.find(r => r.scenario === 'MD_RENDER')
     if (!ts || !baseline) continue
     const l = `- ${size.toLocaleString()} chars: ${formatMs(ts.renderMs)} vs ${formatMs(baseline.renderMs)} → ~${formatFx(baseline.renderMs, ts.renderMs)} faster`
+    lines.push(l)
+  }
+  return lines
+}
+
+function buildRenderVsOx(bySize, sizes) {
+  const lines = []
+  for (const size of sizes) {
+    const arr = bySize.get(size)
+    if (!arr) continue
+    const ts = arr.find(r => r.scenario === 'TS_RENDER')
+    const ox = arr.find(r => r.scenario === 'OX_RENDER')
+    if (!ts || !ox) continue
+    const l = `- ${size.toLocaleString()} chars: ${formatMs(ts.renderMs)} vs ${formatMs(ox.renderMs)} → ${formatComparisonSummary(ox.renderMs, ts.renderMs)}`
     lines.push(l)
   }
   return lines
@@ -318,6 +346,7 @@ function main() {
   const oneSizes = [5000, 20000, 100000, 500000, 1000000]
   const appendSizes = [5000, 20000, 100000, 500000, 1000000]
   const renderSizes = [5000, 20000, 100000, 500000, 1000000]
+  const oxSizes = [5000, 20000, 100000]
   const exitSizes = [5000, 20000, 50000, 100000, 200000]
   const rankingSizes = [5000, 20000, 50000, 100000, 200000]
 
@@ -328,7 +357,9 @@ function main() {
     remarkAppend: buildRemarkAppendExamples(bySize, appendSizes),
     micromarkOne: buildMicromarkOneExamples(bySize, oneSizes),
     micromarkAppend: buildMicromarkAppendExamples(bySize, appendSizes),
+    oxOne: buildOxOneExamples(bySize, oxSizes),
     renderMd: buildRenderVsMarkdownIt(renderBySize, renderSizes),
+    renderOx: buildRenderVsOx(renderBySize, oxSizes),
     renderRemark: buildRenderVsRemark(renderBySize, renderSizes),
     renderMicromark: buildRenderVsMicromark(renderBySize, renderSizes),
     renderExit: buildRenderVsExit(renderBySize, exitSizes),
@@ -359,8 +390,12 @@ function applyBlocks(content, blocks) {
   const endMicromarkOne = '<!-- perf-auto:micromark-one:end -->'
   const startMicromarkApp = '<!-- perf-auto:micromark-append:start -->'
   const endMicromarkApp = '<!-- perf-auto:micromark-append:end -->'
+  const startOxOne = '<!-- perf-auto:ox-one:start -->'
+  const endOxOne = '<!-- perf-auto:ox-one:end -->'
   const startRenderMd = '<!-- perf-auto:render-md:start -->'
   const endRenderMd = '<!-- perf-auto:render-md:end -->'
+  const startRenderOx = '<!-- perf-auto:render-ox:start -->'
+  const endRenderOx = '<!-- perf-auto:render-ox:end -->'
   const startRenderMicromark = '<!-- perf-auto:render-micromark:start -->'
   const endRenderMicromark = '<!-- perf-auto:render-micromark:end -->'
   const startRenderRemark = '<!-- perf-auto:render-remark:start -->'
@@ -381,7 +416,9 @@ function applyBlocks(content, blocks) {
   updated = replaceBetween(updated, startRemarkApp, endRemarkApp, blocks.remarkAppend)
   updated = replaceBetween(updated, startMicromarkOne, endMicromarkOne, blocks.micromarkOne)
   updated = replaceBetween(updated, startMicromarkApp, endMicromarkApp, blocks.micromarkAppend)
+  updated = replaceBetween(updated, startOxOne, endOxOne, blocks.oxOne)
   updated = replaceBetween(updated, startRenderMd, endRenderMd, blocks.renderMd)
+  updated = replaceBetween(updated, startRenderOx, endRenderOx, blocks.renderOx)
   updated = replaceBetween(updated, startRenderMicromark, endRenderMicromark, blocks.renderMicromark)
   updated = replaceBetween(updated, startRenderRemark, endRenderRemark, blocks.renderRemark)
   updated = replaceBetween(updated, startRenderExit, endRenderExit, blocks.renderExit)

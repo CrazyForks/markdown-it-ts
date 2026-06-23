@@ -530,12 +530,28 @@ markdown-it-ts is optimized for fast parser throughput while preserving the mark
 In the latest local benchmark snapshot from this repository’s synthetic harness, one-shot parsing is roughly at parity with or faster than upstream markdown-it on the measured large-document sizes:
 
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.1402ms vs 0.1559ms → ~1.1× faster, ~10% less time
-- 20,000 chars: 0.5532ms vs 0.6310ms → ~1.1× faster, ~12% less time
-- 100,000 chars: 3.7266ms vs 4.3904ms → ~1.2× faster, ~15% less time
-- 500,000 chars: 22.95ms vs 23.44ms → ~1× faster, ~2% less time
-- 1,000,000 chars: 45.94ms vs 50.55ms → ~1.1× faster, ~9% less time
+- 5,000 chars: 0.1518ms vs 0.1858ms → ~1.2× faster, ~18% less time
+- 20,000 chars: 0.5978ms vs 0.7267ms → ~1.2× faster, ~18% less time
+- 100,000 chars: 3.3294ms vs 3.8147ms → ~1.1× faster, ~13% less time
+- 500,000 chars: 22.33ms vs 23.57ms → ~1.1× faster, ~5% less time
+- 1,000,000 chars: 50.21ms vs 51.59ms → ~1× faster, ~3% less time
 <!-- perf-auto:one-examples:end -->
+
+Native parser baseline (`markdown-it-ts` best one-shot vs `@ox-content/napi` parse only):
+
+<!-- perf-auto:ox-one:start -->
+- 5,000 chars: 0.1518ms vs 0.0385ms → ~3.9× slower, ~295% more time
+- 20,000 chars: 0.5978ms vs 0.1473ms → ~4.1× slower, ~306% more time
+- 100,000 chars: 3.3294ms vs 0.8657ms → ~3.8× slower, ~285% more time
+<!-- perf-auto:ox-one:end -->
+
+End-to-end render baseline (`markdown-it-ts.render` vs `@ox-content/napi` parse + render):
+
+<!-- perf-auto:render-ox:start -->
+- 5,000 chars: 0.1788ms vs 0.0363ms → ~4.9× slower, ~393% more time
+- 20,000 chars: 0.6922ms vs 0.1993ms → ~3.5× slower, ~247% more time
+- 100,000 chars: 3.9285ms vs 0.8645ms → ~4.5× slower, ~354% more time
+<!-- perf-auto:render-ox:end -->
 
 For append-heavy editor or streaming workloads, enable the stream parser or use `StreamBuffer` / `UnboundedBuffer`. These paths are designed to avoid reparsing stable historical text when the input shape is safe for incremental parsing.
 
@@ -546,7 +562,7 @@ pnpm run build
 pnpm run perf:generate
 ```
 
-Full parse/render comparisons against remark, micromark, and markdown-exit live in [docs/perf-latest.md](./docs/perf-latest.md) and [docs/perf-report.md](./docs/perf-report.md). Keep README numbers as a short orientation only; benchmark claims should cite the synthetic harness, environment, and snapshot file.
+Full parse/render comparisons against @ox-content/napi, remark, micromark, and markdown-exit live in [docs/perf-latest.md](./docs/perf-latest.md) and [docs/perf-report.md](./docs/perf-report.md). Keep README numbers as a short orientation only; benchmark claims should cite the synthetic harness, environment, and snapshot file.
 
 ## Contributing
 
