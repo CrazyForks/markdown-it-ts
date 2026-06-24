@@ -122,6 +122,8 @@
     "perf:gate": "npm run perf:strategies && npm run perf:strategy:check",
     "perf:sweep": "npm run build && node scripts/full-vs-chunked-sweep.mjs",
     "perf:generate": "npm run build && node scripts/perf-generate-report.mjs",
+    "perf:stock-fast": "npm run build && node scripts/perf-stock-fast-render.mjs",
+    "perf:stock-fast-json": "npm run build && node scripts/perf-stock-fast-ast-json.mjs",
     "perf:rules": "npm run build && node scripts/perf-rule-compare.mjs",
     "perf:render-rules": "npm run build && node scripts/perf-render-rule-compare.mjs",
     "perf:render-rules:check": "npm run build && node scripts/perf-render-rule-compare.mjs --fail-on-regression --threshold=0.03 --min-signal-ms=0.02",

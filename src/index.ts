@@ -10,11 +10,13 @@ import * as helpers from './helpers'
 import { detectGlobalMarkdownState, getKnownGlobalMarkdownState, resetKnownGlobalMarkdownState, runWithKnownGlobalMarkdownState } from './parse/global_state'
 import { normalizeLink, normalizeLinkText, validateLink } from './parse/link_utils'
 import { ParserCore } from './parse/parser_core'
+import { parseStockFast } from './parse/stock_fast'
 import { beginParseDiagnostics, getParseDiagnostics, setStrategyDiagnostics } from './parse/strategy_diagnostics'
 import commonmarkPreset from './presets/commonmark'
 import defaultPreset from './presets/default'
 import zeroPreset from './presets/zero'
 import Renderer from './render/renderer'
+import { renderStockFast } from './render/stock_fast'
 import { chunkedParse } from './stream/chunked'
 import { StreamParser } from './stream/parser'
 import {
@@ -422,6 +424,7 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
   let explicitStreamChunkFallbackSetting = hasExplicitOption(preset?.options, userOptions, 'streamChunkedFallback')
   let usedPlugin = false
   let initialParserRuleVersions: ParserRuleVersions | null = null
+  let initialParse: MarkdownIt['parse'] | null = null
 
   // construct minimal core instance; avoid importing renderer here
   const core = new ParserCore()
@@ -449,6 +452,34 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
     return !usedPlugin
       && !!initialParserRuleVersions
       && !hasParserRuleChanges(instance, initialParserRuleVersions)
+  }
+  const canUseStockRenderFastPath = (instance: MarkdownIt, srcLength: number) => {
+    return presetToUse === 'default'
+      && !usedPlugin
+      && renderer === null
+      && initialParse !== null
+      && instance.parse === initialParse
+      && canUseImplicitLargeInputStrategy(instance)
+      && !instance.stream.enabled
+      && srcLength < (instance.options.autoUnboundedThresholdChars ?? 4_000_000)
+      && instance.options.html === false
+      && instance.options.xhtmlOut === false
+      && instance.options.breaks === false
+      && instance.options.langPrefix === 'language-'
+      && instance.options.linkify === false
+      && instance.options.typographer === false
+      && instance.options.highlight === null
+  }
+  const canUseStockParseFastPath = (instance: MarkdownIt, srcLength: number) => {
+    return presetToUse === 'default'
+      && !usedPlugin
+      && canUseImplicitLargeInputStrategy(instance)
+      && !instance.stream.enabled
+      && !instance.options.fullChunkedFallback
+      && srcLength < (instance.options.autoUnboundedThresholdChars ?? 4_000_000)
+      && instance.options.html === false
+      && instance.options.linkify === false
+      && instance.options.typographer === false
   }
 
   const md: any = {
@@ -587,13 +618,37 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
       fn.apply(thisArg as unknown, args)
       return this
     },
-    render(this: MarkdownIt, src: string, env: Record<string, unknown> = {}) {
-      const tokens = this.parse(src, env)
-      return getRenderer().render(tokens, this.options, env)
+    render(this: MarkdownIt, src: string, env?: Record<string, unknown>) {
+      if (canUseStockRenderFastPath(this, src.length)) {
+        if (env !== undefined)
+          beginParseDiagnostics(env)
+        const html = renderStockFast(src)
+        if (html !== null) {
+          if (env !== undefined)
+            setStrategyDiagnostics(env, { area: 'render', path: 'stock-fast', reason: 'stock-subset' })
+          return html
+        }
+      }
+
+      const envRef = env ?? {}
+      const tokens = this.parse(src, envRef)
+      return getRenderer().render(tokens, this.options, envRef)
     },
-    async renderAsync(this: MarkdownIt, src: string, env: Record<string, unknown> = {}) {
-      const tokens = this.parse(src, env)
-      return getRenderer().renderAsync(tokens, this.options, env)
+    async renderAsync(this: MarkdownIt, src: string, env?: Record<string, unknown>) {
+      if (canUseStockRenderFastPath(this, src.length)) {
+        if (env !== undefined)
+          beginParseDiagnostics(env)
+        const html = renderStockFast(src)
+        if (html !== null) {
+          if (env !== undefined)
+            setStrategyDiagnostics(env, { area: 'render', path: 'stock-fast', reason: 'stock-subset' })
+          return html
+        }
+      }
+
+      const envRef = env ?? {}
+      const tokens = this.parse(src, envRef)
+      return getRenderer().renderAsync(tokens, this.options, envRef)
     },
     renderIterable(this: MarkdownIt, chunks: Iterable<string>, env: Record<string, unknown> = {}) {
       const tokens = this.parseIterable(chunks, env)
@@ -618,12 +673,23 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
     helpers: { ...helpers },
 
     // parsing API (core-only)
-    parse(src: string, env: Record<string, unknown> = {}) {
+    parse(src: string, env?: Record<string, unknown>) {
       if (typeof src !== 'string')
         throw new TypeError('Input data should be a String')
 
-      beginParseDiagnostics(env)
+      if (env !== undefined)
+        beginParseDiagnostics(env)
 
+      if (canUseStockParseFastPath(this, src.length)) {
+        const tokens = parseStockFast(src)
+        if (tokens !== null) {
+          if (env !== undefined)
+            setStrategyDiagnostics(env, { area: 'parse', path: 'stock-fast', reason: 'stock-subset' })
+          return tokens
+        }
+      }
+
+      const envRef = env ?? {}
       let countedLines: number | undefined
 
       // Fast path: stream disabled and chunked fallback disabled -> direct parse,
@@ -632,7 +698,7 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
         if (canUseImplicitLargeInputStrategy(this)) {
           const autoUnboundedDecision = getAutoUnboundedDecision(this, src.length)
           if (autoUnboundedDecision === 'yes') {
-            const tokens = parseStringUnbounded(this, src, env)
+            const tokens = parseStringUnbounded(this, src, envRef)
             setStrategyDiagnostics(env, { area: 'parse', path: 'auto-unbounded', unbounded: true, reason: 'char-threshold' })
             return tokens
           }
@@ -674,13 +740,14 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
 
           if (useChunked) {
             if (autoRecommendation && autoRecommendation.strategy !== 'plain') {
-              const tokens = chunkedParse(this, src, env, {
+              const tokens = chunkedParse(this, src, envRef, {
                 maxChunkChars: autoRecommendation.maxChunkChars,
                 maxChunkLines: autoRecommendation.maxChunkLines,
                 fenceAware: autoRecommendation.fenceAware,
                 maxChunks: autoRecommendation.maxChunks,
               })
-              setFullChunkStrategyDiagnostics(env, wantsChunking ? 'explicit-full-chunk' : 'default-large-string')
+              if (env)
+                setFullChunkStrategyDiagnostics(env, wantsChunking ? 'explicit-full-chunk' : 'default-large-string')
               return tokens
             }
 
@@ -696,28 +763,29 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
                 ? clamp(Math.ceil(chars / 64_000), target, 32)
                 : this.options.fullChunkMaxChunks
 
-              const tokens = chunkedParse(this, src, env, {
+              const tokens = chunkedParse(this, src, envRef, {
                 maxChunkChars,
                 maxChunkLines,
                 fenceAware: this.options.fullChunkFenceAware ?? true,
                 maxChunks,
               })
-              setFullChunkStrategyDiagnostics(env, 'explicit-full-chunk')
+              if (env)
+                setFullChunkStrategyDiagnostics(env, 'explicit-full-chunk')
               return tokens
             }
           }
         }
 
         if (countedLines !== undefined && canUseImplicitLargeInputStrategy(this) && shouldAutoUseUnbounded(this, chars, lines ?? countedLines)) {
-          const tokens = parseStringUnbounded(this, src, env)
+          const tokens = parseStringUnbounded(this, src, envRef)
           setStrategyDiagnostics(env, { area: 'parse', path: 'auto-unbounded', unbounded: true, reason: 'line-threshold' })
           return tokens
         }
       }
       const currentGlobalStateReason = detectGlobalMarkdownState(src)
       setStrategyDiagnostics(env, { area: 'parse', path: 'plain', reason: 'default-plain' })
-      return runWithKnownGlobalMarkdownState(env, currentGlobalStateReason, () => {
-        return core.parse(src, env, this).tokens
+      return runWithKnownGlobalMarkdownState(envRef, currentGlobalStateReason, () => {
+        return core.parse(src, envRef, this).tokens
       })
     },
     parseIterable(this: MarkdownIt, chunks: Iterable<string>, env: Record<string, unknown> = {}) {
@@ -788,6 +856,7 @@ function markdownIt(presetName?: string | MarkdownItOptions, options?: MarkdownI
   }
 
   initialParserRuleVersions = getParserRuleVersions(md)
+  initialParse = md.parse
 
   return md as MarkdownIt
 }

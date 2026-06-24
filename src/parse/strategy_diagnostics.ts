@@ -1,5 +1,5 @@
 export interface StrategyDiagnostics {
-  area: 'parse' | 'stream'
+  area: 'parse' | 'render' | 'stream'
   path: string
   reason?: string
   chunked?: boolean
@@ -62,12 +62,7 @@ function getDiagnosticsStore(
       return undefined
 
     const diagnostics: ParseDiagnostics = {}
-    Object.defineProperty(env, MDTS_DIAGNOSTICS, {
-      value: diagnostics,
-      enumerable: false,
-      configurable: true,
-      writable: true,
-    })
+    ;(env as any)[MDTS_DIAGNOSTICS] = diagnostics
     return diagnostics
   }
   catch {
@@ -84,7 +79,13 @@ export function clearParseDiagnostics(env: Record<string, unknown> | undefined):
     return
 
   try {
-    delete (env as any)[MDTS_DIAGNOSTICS]
+    const diagnostics = (env as any)[MDTS_DIAGNOSTICS]
+    if (diagnostics && typeof diagnostics === 'object') {
+      delete diagnostics.strategy
+      delete diagnostics.chunk
+      delete diagnostics.unbounded
+      delete diagnostics.editable
+    }
   }
   catch {}
 }

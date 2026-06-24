@@ -34,6 +34,8 @@ import {
   parseAsyncIterableToSink,
   parseIterable,
   parseIterableToSink,
+  parseStockFastAstJson,
+  renderStockFast,
   type StreamStats,
 } from 'markdown-it-ts/experimental'
 import Renderer, { type RendererRule } from 'markdown-it-ts/render/renderer'
@@ -142,6 +144,8 @@ const sinkStats = parseIterableToSink(typedMd, ['# A\\n'], () => {}, env)
 const asyncSinkStats = parseAsyncIterableToSink(typedMd, (async function* chunks() {
   yield '# A\\n'
 })(), () => {}, env)
+const stockFastAstJson: string | null = parseStockFastAstJson('# typed\\n')
+const stockFastHtml: string | null = renderStockFast('# typed\\n')
 
 void html
 void tokens
@@ -160,6 +164,8 @@ void iterableTokens
 void asyncTokens
 void sinkStats
 void asyncSinkStats
+void stockFastAstJson
+void stockFastHtml
 void EditableBuffer
 void PieceTable
 void UnboundedBuffer
@@ -203,6 +209,9 @@ import { parseIterableToSink } from 'markdown-it-ts'
 
 // @ts-expect-error parseAsyncIterableToSink must not be a root named export.
 import { parseAsyncIterableToSink } from 'markdown-it-ts'
+
+// @ts-expect-error parseStockFastAstJson must not be a root named export.
+import { parseStockFastAstJson } from 'markdown-it-ts'
 
 // @ts-expect-error recommendFullChunkStrategy must not be a root named export.
 import { recommendFullChunkStrategy } from 'markdown-it-ts'

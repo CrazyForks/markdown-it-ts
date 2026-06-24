@@ -1,221 +1,118 @@
-// 生成中文版性能报告到 docs/perf-latest.zh-CN.md
-// 先构建: npm run build
-// 运行: node scripts/perf-generate-report.zh.mjs
+// 从 docs/perf-latest.json 生成中文版性能报告。
+// 先运行 `pnpm run perf:generate` 刷新 JSON，再运行本脚本。
 
-import { performance } from 'node:perf_hooks'
-import { writeFileSync } from 'node:fs'
-import MarkdownIt from '../dist/index.js'
-import MarkdownItOriginal from 'markdown-it'
+import { readFileSync, writeFileSync } from 'node:fs'
 
-function para(n) {
-  return `## 段落 ${n}\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod.\n\n- a\n- b\n- c\n\n\`\`\`js\nconsole.log(${n})\n\`\`\`\n\n`
+const perfUrl = new URL('../docs/perf-latest.json', import.meta.url)
+const outputUrl = new URL('../docs/perf-latest.zh-CN.md', import.meta.url)
+
+function fmt(ms) {
+  if (ms == null)
+    return '-'
+  return ms < 10 ? `${ms.toFixed(4)}ms` : `${ms.toFixed(2)}ms`
 }
 
-function makeParasByChars(targetChars) {
-  const paras = []
-  let s = ''
-  let i = 0
-  while (s.length < targetChars) {
-    const p = para(i++)
-    paras.push(p)
-    s += p
-  }
-  return paras
+function ratio(candidate, baseline) {
+  if (!candidate || !baseline)
+    return '-'
+  return `${(candidate / baseline).toFixed(2)}x`
 }
 
-function splitParasIntoSteps(paras, steps) {
-  const per = Math.max(1, Math.floor(paras.length / steps))
-  const parts = []
-  for (let i = 0; i < steps - 1; i++) parts.push(paras.slice(i * per, (i + 1) * per).join(''))
-  parts.push(paras.slice((steps - 1) * per).join(''))
-  return parts
-}
-
-function measure(fn, iters = 1) {
-  const t0 = performance.now()
-  let res
-  for (let i = 0; i < iters; i++) res = fn()
-  const t1 = performance.now()
-  return { ms: t1 - t0, res }
-}
-
-function fmt(ms) { return `${ms.toFixed(2)}ms` }
-
-const SIZES = [5_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000]
-const APP_STEPS = 6
-
-function makeScenarios() {
-  function s1() { return MarkdownIt({ stream: true, streamChunkedFallback: true, streamChunkSizeChars: 10_000, streamChunkSizeLines: 200, streamChunkFenceAware: true }) }
-  function s2() { return MarkdownIt({ stream: true, streamChunkedFallback: false }) }
-  function s3() { return MarkdownIt({ stream: true, streamChunkedFallback: true, streamChunkSizeChars: 10_000, streamChunkSizeLines: 200, streamChunkFenceAware: true }) }
-  function s4() { return MarkdownIt({ stream: false, fullChunkedFallback: true, fullChunkThresholdChars: 20_000, fullChunkThresholdLines: 400, fullChunkSizeChars: 10_000, fullChunkSizeLines: 200, fullChunkFenceAware: true }) }
-  function s5() { return MarkdownIt({ stream: false }) }
-  return [
-    { id: 'S1', label: '流式 开启, 关闭缓存, 开启分块', make: s1, type: 'stream-no-cache-chunk' },
-    { id: 'S2', label: '流式 开启, 开启缓存, 关闭分块', make: s2, type: 'stream-cache' },
-    { id: 'S3', label: '流式 开启, 开启缓存, 开启分块(混合)', make: s3, type: 'stream-hybrid' },
-    { id: 'S4', label: '流式 关闭, 全量分块', make: s4, type: 'full-chunk' },
-    { id: 'S5', label: '流式 关闭, 纯全量', make: s5, type: 'full-plain' },
-    { id: 'M1', label: 'markdown-it（基线）', make: () => MarkdownItOriginal(), type: 'md-original' },
-  ]
-}
-
-function groupBy(arr, key) {
-  const m = new Map()
-  for (const it of arr) {
-    const k = it[key]
-    if (!m.has(k)) m.set(k, [])
-    m.get(k).push(it)
-  }
-  return m
-}
-
-function runMatrix() {
-  const scenarios = makeScenarios()
-  const results = []
-
-  for (const size of SIZES) {
-    const paras = makeParasByChars(size)
-    const doc = paras.join('')
-    const appParts = splitParasIntoSteps(paras, APP_STEPS)
-
-    for (const sc of scenarios) {
-      const md = sc.make()
-      const envStream = { bench: true }
-
-      // 一次性
-      const one = measure(() => (
-        sc.type.startsWith('stream') ? md.stream.parse(doc, envStream)
-        : sc.type === 'md-original' ? md.parse(doc, {})
-        : md.parse(doc, {})
-      ))
-
-      // 追加工作负载
-      let acc = ''
-      let appendMs = 0
-      for (let i = 0; i < appParts.length; i++) {
-        if (acc.length && acc.charCodeAt(acc.length - 1) !== 0x0A) acc += '\n'
-        let piece = appParts[i]
-        if (piece.length && piece.charCodeAt(piece.length - 1) !== 0x0A) piece += '\n'
-        acc += piece
-        if (sc.type === 'stream-no-cache-chunk') md.stream.reset()
-        const t = performance.now()
-        if (sc.type.startsWith('stream')) md.stream.parse(acc, envStream)
-        else if (sc.type === 'md-original') md.parse(acc, {})
-        else md.parse(acc, {})
-        appendMs += performance.now() - t
-      }
-
-      const stat = {
-        size,
-        scenario: sc.id,
-        label: sc.label,
-        oneShotMs: one.ms,
-        appendWorkloadMs: appendMs,
-        lastMode: md.stream?.stats?.().lastMode || 'n/a',
-        appendHits: md.stream?.stats?.().appendHits || 0,
-      }
-      results.push(stat)
-    }
-  }
-
-  return results
-}
-
-function toMarkdown(results) {
-  const lines = []
-  lines.push('# 性能报告（最新一次）')
-  lines.push('')
-  lines.push('默认 API 说明：普通 `md.parse(src)` / `md.render(src)` 在面对超大但有限的字符串时，已经会自动启用内部大文本优化；`parseIterable` / `UnboundedBuffer` 这类入口只保留给“输入本来就是 chunk 流”的高级场景。')
-  lines.push('')
-
-  const ids = ['S1','S2','S3','S4','S5','M1']
-  lines.push('| 字数 | ' + ids.map(id => `${id} 一次`).join(' | ') + ' | ' + ids.map(id => `${id} 追加`).join(' | ') + ' |')
-  lines.push('|---:|' + ids.map(()=> '---:').join('|') + '|' + ids.map(()=> '---:').join('|') + '|')
+function groupBySize(rows) {
   const bySize = new Map()
-  for (const r of results) {
-    if (!bySize.has(r.size)) bySize.set(r.size, {})
-    bySize.get(r.size)[r.scenario] = r
+  for (const row of rows || []) {
+    if (!bySize.has(row.size))
+      bySize.set(row.size, [])
+    bySize.get(row.size).push(row)
   }
-  for (const size of Array.from(bySize.keys()).sort((a,b)=>a-b)) {
-    const row = bySize.get(size)
-    const oneVals = ids.map(id => row[id]?.oneShotMs ?? Number.POSITIVE_INFINITY)
-    const appVals = ids.map(id => row[id]?.appendWorkloadMs ?? Number.POSITIVE_INFINITY)
-    const oneMin = Math.min(...oneVals)
-    const appMin = Math.min(...appVals)
-    const oneCells = ids.map((id) => {
-      const v = row[id]?.oneShotMs
-      if (v == null) return '-'
-      const cell = fmt(v)
-      return v === oneMin ? `**${cell}**` : cell
-    })
-    const appCells = ids.map((id) => {
-      const v = row[id]?.appendWorkloadMs
-      if (v == null) return '-'
-      const cell = fmt(v)
-      return v === appMin ? `**${cell}**` : cell
-    })
-    lines.push(`| ${size} | ${oneCells.join(' | ')} | ${appCells.join(' | ')} |`)
-  }
-
-  lines.push('')
-  lines.push('各规模下的最佳（一次性）：')
-  for (const [size, arr] of groupBy(results, 'size')) {
-    const best = [...arr].sort((a,b)=>a.oneShotMs-b.oneShotMs)[0]
-    lines.push(`- ${size}: ${best.scenario} ${fmt(best.oneShotMs)}（${best.label}）`)
-  }
-
-  lines.push('')
-  lines.push('各规模下的最佳（追加工作负载）：')
-  for (const [size, arr] of groupBy(results, 'size')) {
-    const best = [...arr].sort((a,b)=>a.appendWorkloadMs-b.appendWorkloadMs)[0]
-    lines.push(`- ${size}: ${best.scenario} ${fmt(best.appendWorkloadMs)}（${best.label}）`)
-  }
-
-  lines.push('')
-  // 多数投票推荐
-  const winsOne = new Map()
-  const winsApp = new Map()
-  for (const [size, arr] of groupBy(results, 'size')) {
-    const oneBest = [...arr].sort((a,b)=>a.oneShotMs-b.oneShotMs)[0]
-    const appBest = [...arr].sort((a,b)=>a.appendWorkloadMs-b.appendWorkloadMs)[0]
-    winsOne.set(oneBest.scenario, (winsOne.get(oneBest.scenario)||0)+1)
-    winsApp.set(appBest.scenario, (winsApp.get(appBest.scenario)||0)+1)
-  }
-  function fmtWins(map){ return Array.from(map.entries()).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}(${v})`).join('、') }
-  lines.push('推荐（按不同规模的多数投票）：')
-  lines.push(`- 一次性：${fmtWins(winsOne)}`)
-  lines.push(`- 追加编辑：${fmtWins(winsApp)}`)
-
-  lines.push('')
-  lines.push('说明：当使用同一个 env 对象时，S2/S3 的 `appendHits` 应为 5（每次追加都会命中快路径）。')
-
-  lines.push('')
-  lines.push('## markdown-it-ts 最佳 vs markdown-it（基线）')
-  lines.push('')
-  lines.push('| 字数 | TS 最佳（一次） | 基线（一次） | 一次比例 | TS 最佳（追加） | 基线（追加） | 追加比例 | TS 场景（一次/追加） |')
-  lines.push('|---:|---:|---:|---:|---:|---:|---:|:--|')
-  const bySize2 = groupBy(results, 'size')
-  const isTsScenario = (id) => id !== 'M1'
-  for (const [size, arr] of Array.from(bySize2.entries()).sort((a,b)=>a[0]-b[0])) {
-    const tsOnly = arr.filter(r => isTsScenario(r.scenario))
-    const baseline = arr.find(r => r.scenario === 'M1')
-    if (!baseline) continue
-    const bestTsOne = [...tsOnly].sort((a,b)=>a.oneShotMs-b.oneShotMs)[0]
-    const bestTsApp = [...tsOnly].sort((a,b)=>a.appendWorkloadMs-b.appendWorkloadMs)[0]
-    const oneRatio = bestTsOne.oneShotMs / baseline.oneShotMs
-    const appRatio = bestTsApp.appendWorkloadMs / baseline.appendWorkloadMs
-    lines.push(`| ${size} | ${fmt(bestTsOne.oneShotMs)} | ${fmt(baseline.oneShotMs)} | ${(oneRatio).toFixed(2)}x | ${fmt(bestTsApp.appendWorkloadMs)} | ${fmt(baseline.appendWorkloadMs)} | ${(appRatio).toFixed(2)}x | ${bestTsOne.scenario}/${bestTsApp.scenario} |`)
-  }
-
-  lines.push('')
-  lines.push('- 一次比例 < 1.00 表示 markdown-it-ts（最佳一次）快于基线。')
-  lines.push('- 追加比例 < 1.00 表示流式缓存快路径的优势。')
-
-  return lines.join('\n')
+  return bySize
 }
 
-const results = runMatrix()
-const md = toMarkdown(results)
-writeFileSync(new URL('../docs/perf-latest.zh-CN.md', import.meta.url), md)
+function pick(rows, scenario) {
+  return rows?.find(row => row.scenario === scenario)
+}
+
+function pickBestTs(rows, metric) {
+  return rows
+    ?.filter(row => /^S\d$/.test(row.scenario))
+    .sort((a, b) => a[metric] - b[metric])[0]
+}
+
+function comparisonText(baseline, candidate) {
+  if (candidate <= baseline)
+    return `${(baseline / candidate).toFixed(2)}x 更快`
+  return `${(candidate / baseline).toFixed(2)}x 更慢`
+}
+
+const perf = JSON.parse(readFileSync(perfUrl, 'utf8'))
+const parseBySize = groupBySize(perf.results)
+const renderBySize = groupBySize(perf.renderComparisons || [])
+const astBySize = new Map((perf.stockAstJsonComparisons || []).map(row => [row.size, row]))
+const sizes = Array.from(parseBySize.keys()).sort((a, b) => a - b)
+const parseIds = ['S1', 'S2', 'S3', 'S4', 'S5', 'M1', 'E1', 'OX1', 'OXJ', 'MM1']
+const renderIds = ['TS_RENDER', 'TS_RENDER_ASYNC', 'MD_RENDER', 'OX_RENDER', 'MM_RENDER', 'RM_RENDER', 'EX_RENDER']
+
+const lines = []
+lines.push('# 性能报告（最新一次）')
+lines.push('')
+lines.push('## 运行环境')
+lines.push('')
+lines.push(`- 生成时间：${perf.environment?.generatedAt ?? 'unknown'}`)
+lines.push(`- Node.js：${perf.environment?.node ?? 'unknown'}`)
+lines.push(`- 平台：${perf.environment?.platform ?? 'unknown'}`)
+lines.push(`- CPU：${perf.environment?.cpu ?? 'unknown'}`)
+lines.push(`- Commit：${perf.environment?.commit ?? 'unknown'}`)
+lines.push('')
+lines.push('默认 API 说明：普通 `md.parse(src)` / `md.render(src)` 面对超大但有限的字符串时，可能自动启用内部大文本优化。外部 parser 行保留各自原生输出形态；`OXJ` 表示在 `@ox-content/napi` 的 AST JSON 字符串后追加 `JSON.parse`。')
+lines.push('')
+lines.push('## Parse 吞吐（one-shot）')
+lines.push('')
+lines.push('| 字数 | ' + parseIds.map(id => `${id} one`).join(' | ') + ' |')
+lines.push('|---:|' + parseIds.map(() => '---:').join('|') + '|')
+for (const size of sizes) {
+  const rows = parseBySize.get(size)
+  const values = parseIds.map(id => pick(rows, id)?.oneShotMs)
+  const best = Math.min(...values.filter(value => value != null))
+  const cells = values.map((value) => {
+    const cell = fmt(value)
+    return value === best ? `**${cell}**` : cell
+  })
+  lines.push(`| ${size.toLocaleString()} | ${cells.join(' | ')} |`)
+}
+lines.push('')
+lines.push('## Render API 吞吐（parse + HTML 输出）')
+lines.push('')
+lines.push('| 字数 | markdown-it-ts.render | markdown-it-ts.renderAsync | markdown-it.render | @ox-content/napi | micromark | remark+rehype | markdown-exit |')
+lines.push('|---:|' + renderIds.map(() => '---:').join('|') + '|')
+for (const size of sizes) {
+  const rows = renderBySize.get(size)
+  const cells = renderIds.map(id => fmt(pick(rows, id)?.renderMs))
+  lines.push(`| ${size.toLocaleString()} | ${cells.join(' | ')} |`)
+}
+lines.push('')
+lines.push('## markdown-it-ts vs @ox-content/napi')
+lines.push('')
+lines.push('| 字数 | TS 最佳 parse | ox parse-only | Parse 对比 | TS AST JSON | AST JSON 对比 | TS render | ox render | Render 对比 |')
+lines.push('|---:|---:|---:|:--|---:|:--|---:|---:|:--|')
+for (const size of sizes) {
+  const parseRows = parseBySize.get(size)
+  const renderRows = renderBySize.get(size)
+  const bestTs = pickBestTs(parseRows, 'oneShotMs')
+  const ox = pick(parseRows, 'OX1')
+  const ast = astBySize.get(size)
+  const tsRender = pick(renderRows, 'TS_RENDER')
+  const oxRender = pick(renderRows, 'OX_RENDER')
+  lines.push(`| ${size.toLocaleString()} | ${fmt(bestTs?.oneShotMs)} | ${fmt(ox?.oneShotMs)} | ${comparisonText(ox?.oneShotMs, bestTs?.oneShotMs)} | ${fmt(ast?.tsAstJsonMs)} | ${comparisonText(ast?.oxParseMs, ast?.tsAstJsonMs)} | ${fmt(tsRender?.renderMs)} | ${fmt(oxRender?.renderMs)} | ${comparisonText(oxRender?.renderMs, tsRender?.renderMs)} |`)
+}
+lines.push('')
+lines.push('## 结论')
+lines.push('')
+lines.push('- `@ox-content/napi` 的 parse-only 很快，因为它返回 AST JSON 字符串，而不是 JavaScript `Token[]` 对象图。')
+lines.push('- `parseStockFastAstJson` 在本基准中已经快于 ox parse-only，说明扫描与紧凑字符串输出不是主要瓶颈。')
+lines.push('- 默认 `md.parse()` 仍要返回 markdown-it 兼容、可变的 tokens，剩余差距主要来自 Token、children、map 数组与 GC 成本。')
+lines.push('- 默认 `md.render()` 走 stock render 快路径后，在本快照中全尺寸都快于或接近 `@ox-content/napi` render。')
+lines.push('')
+lines.push('场景说明：S1~S5 为 markdown-it-ts 配置矩阵；M1 为 markdown-it；E1 为 markdown-exit；OX1 为 `@ox-content/napi` parse-only；OXJ 为 ox parse + `JSON.parse`；MM1 为 micromark parse-only。')
+
+writeFileSync(outputUrl, `${lines.join('\n')}\n`)
 console.log('已写入 docs/perf-latest.zh-CN.md')

@@ -7,7 +7,7 @@ import { writeFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import os from 'node:os'
 import MarkdownIt from '../dist/index.js'
-import { getParseDiagnostics } from '../dist/experimental.js'
+import { getParseDiagnostics, parseStockFastAstJson } from '../dist/experimental.js'
 import MarkdownItOriginal from 'markdown-it'
 import {
   IncrementalMarkdownParser as OxIncrementalMarkdownParser,
@@ -86,6 +86,14 @@ function measure(fn, iters = 1) {
   return { ms: t1 - t0, res }
 }
 
+async function measureAsync(fn, iters = 1) {
+  const t0 = performance.now()
+  let res
+  for (let i = 0; i < iters; i++) res = await fn()
+  const t1 = performance.now()
+  return { ms: t1 - t0, res }
+}
+
 function median(values) {
   const sorted = [...values].sort((a, b) => a - b)
   const mid = Math.floor(sorted.length / 2)
@@ -110,6 +118,19 @@ function measureStableWarm(fn, iters = 1, samples = 3, warmupsPerSample = 1) {
     for (let warm = 0; warm < warmupsPerSample; warm++)
       fn()
     const run = measure(fn, iters)
+    measurements.push(run.ms / iters)
+    res = run.res
+  }
+  return { ms: median(measurements), res }
+}
+
+async function measureStableWarmAsync(fn, iters = 1, samples = 3, warmupsPerSample = 1) {
+  const measurements = []
+  let res
+  for (let sample = 0; sample < samples; sample++) {
+    for (let warm = 0; warm < warmupsPerSample; warm++)
+      await fn()
+    const run = await measureAsync(fn, iters)
     measurements.push(run.ms / iters)
     res = run.res
   }
@@ -187,6 +208,7 @@ function makeScenarios() {
     { id: 'M1', label: 'markdown-it (baseline)', make: () => MarkdownItOriginal(), type: 'md-original' },
     { id: 'E1', label: 'markdown-exit', make: () => createMarkdownExitFactory(), type: 'md-exit' },
     { id: 'OX1', label: '@ox-content/napi (parse only)', make: () => ({ parser: new OxIncrementalMarkdownParser() }), type: 'ox-content' },
+    { id: 'OXJ', label: '@ox-content/napi (parse + JSON.parse)', make: () => ({ parser: new OxIncrementalMarkdownParser() }), type: 'ox-content-json' },
     // Parse-only using micromark's preprocess + parse + postprocess pipeline (no HTML compile).
     { id: 'MM1', label: 'micromark (parse only)', make: createMicromarkParseOnly, type: 'micromark-parse' },
     // Remark parse-only scenario (parse throughput, no HTML render)
@@ -197,7 +219,7 @@ function makeScenarios() {
 function resetScenario(sc, md) {
   if (sc.type.startsWith('stream'))
     md.stream.reset()
-  if (sc.type === 'ox-content')
+  if (sc.type === 'ox-content' || sc.type === 'ox-content-json')
     md.parser.reset()
 }
 
@@ -205,12 +227,16 @@ function runParseScenario(sc, md, input, envStream, envPlain) {
   if (sc.type.startsWith('stream'))
     return md.stream.parse(input, envStream)
   if (sc.type === 'md-original')
-    return md.parse(input, {})
+    return md.parse(input)
   if (sc.type === 'md-exit')
     return md.parse(input)
   if (sc.type === 'ox-content')
     return oxParse(input)
+  if (sc.type === 'ox-content-json')
+    return JSON.parse(oxParse(input).ast)
   if (sc.type === 'remark')
+    return md.parse(input)
+  if (sc.type === 'full-plain')
     return md.parse(input)
   return md.parse(input, envPlain)
 }
@@ -218,6 +244,8 @@ function runParseScenario(sc, md, input, envStream, envPlain) {
 function runAppendParseScenario(sc, md, acc, piece, isFinal, envStream, envPlain) {
   if (sc.type === 'ox-content')
     return md.parser.append(piece, { isFinal })
+  if (sc.type === 'ox-content-json')
+    return JSON.parse(md.parser.append(piece, { isFinal }).ast)
   return runParseScenario(sc, md, acc, envStream, envPlain)
 }
 
@@ -451,6 +479,7 @@ function measureColdHot() {
     { id: 'TS', label: 'markdown-it-ts (stream+chunk)', type: 'ts', make: () => MarkdownIt({ stream: true, streamChunkedFallback: true, streamChunkSizeChars: 10_000, streamChunkSizeLines: 200, streamChunkFenceAware: true }) },
     { id: 'MD', label: 'markdown-it (baseline)', type: 'md-original', make: () => MarkdownItOriginal() },
     { id: 'OX', label: '@ox-content/napi (parse only)', type: 'ox-content', make: () => null },
+    { id: 'OXJ', label: '@ox-content/napi (parse + JSON.parse)', type: 'ox-content-json', make: () => null },
     { id: 'MM', label: 'micromark (parse only)', type: 'micromark-parse', make: createMicromarkParseOnly },
     { id: 'RM', label: 'remark (parse only)', type: 'remark', make: () => unified().use(remarkParse) },
     { id: 'EX', label: 'markdown-exit', type: 'md-exit', make: () => createMarkdownExitFactory() },
@@ -473,6 +502,8 @@ function measureColdHot() {
               ? coldInst.parse(doc, {})
               : impl.type === 'ox-content'
                 ? oxParse(doc)
+                : impl.type === 'ox-content-json'
+                  ? JSON.parse(oxParse(doc).ast)
                 : impl.type === 'ts'
                   ? (coldInst.stream.reset(), coldInst.stream.parse(doc, {}))
                   : coldInst.parse(doc, {})
@@ -487,6 +518,8 @@ function measureColdHot() {
               ? hotInst.parse(doc, {})
               : impl.type === 'ox-content'
                 ? oxParse(doc)
+                : impl.type === 'ox-content-json'
+                  ? JSON.parse(oxParse(doc).ast)
                 : impl.type === 'ts'
                   ? (hotInst.stream.reset(), hotInst.stream.parse(doc, {}))
                   : hotInst.parse(doc, {})
@@ -502,9 +535,10 @@ function measureColdHot() {
   return coldHot
 }
 
-function measureRenderComparisons() {
+async function measureRenderComparisons() {
   const impls = [
     { id: 'TS_RENDER', label: 'markdown-it-ts.render', type: 'ts', make: () => MarkdownIt() },
+    { id: 'TS_RENDER_ASYNC', label: 'markdown-it-ts.renderAsync', type: 'ts-async', make: () => MarkdownIt() },
     { id: 'MD_RENDER', label: 'markdown-it.render', type: 'md-original', make: () => MarkdownItOriginal() },
     { id: 'OX_RENDER', label: '@ox-content/napi', type: 'ox-content', make: () => oxParseAndRender },
     { id: 'MM_RENDER', label: 'micromark (CommonMark)', type: 'micromark', make: () => micromark },
@@ -530,6 +564,14 @@ function measureRenderComparisons() {
                 ? inst.render(doc)
                 : inst.render(doc)
       )
+      if (impl.type === 'ts-async') {
+        const asyncRunner = () => inst.renderAsync(doc)
+        await asyncRunner(); await asyncRunner(); await asyncRunner()
+        const { ms } = await measureStableWarmAsync(asyncRunner, oneIters, stableSamples, 1)
+        results.push({ size, scenario: impl.id, label: impl.label, renderMs: ms })
+        continue
+      }
+
       runner(); runner(); runner()
       const { ms } = measureStableWarm(runner, oneIters, stableSamples, 1)
       results.push({ size, scenario: impl.id, label: impl.label, renderMs: ms })
@@ -539,7 +581,38 @@ function measureRenderComparisons() {
   return results
 }
 
-function toMarkdown(results, coldHot, environment) {
+function measureStockAstJsonComparisons() {
+  const comparisons = []
+
+  for (let sizeIndex = 0; sizeIndex < SIZES.length; sizeIndex++) {
+    const size = SIZES[sizeIndex]
+    const doc = makeParasByChars(size).join('')
+    const { oneIters, stableSamples } = pickIters(size)
+
+    const ast = parseStockFastAstJson(doc)
+    if (ast === null)
+      throw new Error(`parseStockFastAstJson returned null for ${size} chars`)
+
+    const oxAst = oxParse(doc).ast
+    if (ast !== oxAst)
+      throw new Error(`parseStockFastAstJson output mismatch for ${size} chars`)
+
+    const ts = measureStableWarm(() => parseStockFastAstJson(doc), oneIters, stableSamples, 1)
+    const ox = measureStableWarm(() => oxParse(doc), oneIters, stableSamples, 1)
+    const oxJson = measureStableWarm(() => JSON.parse(oxParse(doc).ast), oneIters, stableSamples, 1)
+
+    comparisons.push({
+      size,
+      tsAstJsonMs: ts.ms,
+      oxParseMs: ox.ms,
+      oxParseJsonMs: oxJson.ms,
+    })
+  }
+
+  return comparisons
+}
+
+function toMarkdown(results, coldHot, environment, stockAstJsonComparisons) {
   const lines = []
   lines.push('# Performance Report (latest run)')
   lines.push('')
@@ -553,9 +626,9 @@ function toMarkdown(results, coldHot, environment) {
   lines.push(`- Commit: ${environment.commit}`)
   lines.push('')
   lines.push('Default API note: normal `md.parse(src)` / `md.render(src)` calls may auto-activate an internal large-input path for very large finite strings only when no plugin has been installed and parser rulers have not been modified. Explicit chunk-stream APIs such as `parseIterable` / `UnboundedBuffer` are advanced tools for sources that already arrive as chunks.')
-  lines.push('External parser rows use each library\'s native output shape; this matrix compares throughput, not byte-for-byte output compatibility.')
+  lines.push('External parser rows use each library\'s native output shape; this matrix compares throughput, not byte-for-byte output compatibility. `OXJ` adds `JSON.parse` on top of @ox-content/napi\'s AST JSON string to show the cost of materializing a JavaScript object tree.')
   lines.push('')
-  const ids = ['S1','S2','S3','S4','S5','M1','E1','OX1','MM1']
+  const ids = ['S1','S2','S3','S4','S5','M1','E1','OX1','OXJ','MM1']
   lines.push('| Size (chars) | ' + ids.map(id => `${id} one`).join(' | ') + ' | ' + ids.map(id => `${id} append(par)`).join(' | ') + ' | ' + ids.map(id => `${id} append(line)`).join(' | ') + ' | ' + ids.map(id => `${id} replace`).join(' | ') + ' |')
   lines.push('|---:|' + ids.map(()=> '---:').join('|') + '|' + ids.map(()=> '---:').join('|') + '|' + ids.map(()=> '---:').join('|') + '|' + ids.map(()=> '---:').join('|') + '|')
   const bySize = new Map()
@@ -643,21 +716,22 @@ function toMarkdown(results, coldHot, environment) {
   lines.push('')
   lines.push('## Render API throughput (markdown → HTML)')
   lines.push('')
-  lines.push('This measures end-to-end `md.render(markdown)` throughput across markdown-it-ts, upstream markdown-it, @ox-content/napi, micromark (CommonMark reference), and remark+rehype (parse + stringify). Lower is better.')
+  lines.push('This measures end-to-end render API throughput across markdown-it-ts, upstream markdown-it, @ox-content/napi, micromark (CommonMark reference), and remark+rehype (parse + stringify). Lower is better.')
   lines.push('It is intentionally a full render-API benchmark (`parse + render`), not a renderer-only hot-path benchmark.')
   lines.push('')
   const renderBySize = groupBy(renderComparisons, 'size')
-  lines.push('| Size (chars) | markdown-it-ts.render | markdown-it.render | @ox-content/napi | micromark | remark+rehype | markdown-exit |')
-  lines.push('|---:|---:|---:|---:|---:|---:|---:|')
+  lines.push('| Size (chars) | markdown-it-ts.render | markdown-it-ts.renderAsync | markdown-it.render | @ox-content/napi | micromark | remark+rehype | markdown-exit |')
+  lines.push('|---:|---:|---:|---:|---:|---:|---:|---:|')
   for (const [size, arr] of Array.from(renderBySize.entries()).sort((a, b) => a[0] - b[0])) {
     const get = (id) => arr.find(r => r.scenario === id)?.renderMs
     const ts = get('TS_RENDER')
+    const tsAsync = get('TS_RENDER_ASYNC')
     const mdRender = get('MD_RENDER')
     const oxRender = get('OX_RENDER')
     const micromarkRender = get('MM_RENDER')
     const remarkRender = get('RM_RENDER')
     const exitRender = get('EX_RENDER')
-    lines.push(`| ${size} | ${ts != null ? fmt(ts) : '-'} | ${mdRender != null ? fmt(mdRender) : '-'} | ${oxRender != null ? fmt(oxRender) : '-'} | ${micromarkRender != null ? fmt(micromarkRender) : '-'} | ${remarkRender != null ? fmt(remarkRender) : '-'} | ${exitRender != null ? fmt(exitRender) : '-'} |`)
+    lines.push(`| ${size} | ${ts != null ? fmt(ts) : '-'} | ${tsAsync != null ? fmt(tsAsync) : '-'} | ${mdRender != null ? fmt(mdRender) : '-'} | ${oxRender != null ? fmt(oxRender) : '-'} | ${micromarkRender != null ? fmt(micromarkRender) : '-'} | ${remarkRender != null ? fmt(remarkRender) : '-'} | ${exitRender != null ? fmt(exitRender) : '-'} |`)
   }
   lines.push('')
   lines.push('Render vs markdown-it:')
@@ -672,6 +746,14 @@ function toMarkdown(results, coldHot, environment) {
   lines.push('Render vs @ox-content/napi:')
   for (const [size, arr] of Array.from(renderBySize.entries()).sort((a, b) => a[0] - b[0])) {
     const ts = arr.find(r => r.scenario === 'TS_RENDER')
+    const oxRender = arr.find(r => r.scenario === 'OX_RENDER')
+    if (!ts || !oxRender) continue
+    lines.push(`- ${Number(size).toLocaleString()} chars: ${fmt(ts.renderMs)} vs ${fmt(oxRender.renderMs)} → ${describeComparison(oxRender.renderMs, ts.renderMs)}`)
+  }
+  lines.push('')
+  lines.push('RenderAsync vs @ox-content/napi:')
+  for (const [size, arr] of Array.from(renderBySize.entries()).sort((a, b) => a[0] - b[0])) {
+    const ts = arr.find(r => r.scenario === 'TS_RENDER_ASYNC')
     const oxRender = arr.find(r => r.scenario === 'OX_RENDER')
     if (!ts || !oxRender) continue
     lines.push(`- ${Number(size).toLocaleString()} chars: ${fmt(ts.renderMs)} vs ${fmt(oxRender.renderMs)} → ${describeComparison(oxRender.renderMs, ts.renderMs)}`)
@@ -728,6 +810,8 @@ function toMarkdown(results, coldHot, environment) {
   lines.push('')
   lines.push('## Best-of markdown-it-ts vs @ox-content/napi')
   lines.push('')
+  lines.push('Note: the @ox-content/napi parse-only API returns an AST JSON string; these parse-only rows do not include a follow-up `JSON.parse` into JavaScript objects.')
+  lines.push('')
   lines.push('| Size (chars) | TS best one | @ox-content/napi one | One comparison | TS best append | @ox-content/napi append | Append comparison | TS scenario (one/append) |')
   lines.push('|---:|---:|---:|:--|---:|---:|:--|:--|')
   for (const [size, arr] of Array.from(bySize2.entries()).sort((a,b)=>a[0]-b[0])) {
@@ -743,6 +827,31 @@ function toMarkdown(results, coldHot, environment) {
   lines.push('')
   lines.push('- Append comparison uses markdown-it-ts stream append fast paths against @ox-content/napi incremental parser appends.')
   lines.push('')
+  lines.push('If the @ox-content/napi AST JSON string is parsed into JavaScript objects immediately after parsing:')
+  lines.push('')
+  lines.push('| Size (chars) | TS best one | @ox-content/napi parse + JSON.parse | One comparison |')
+  lines.push('|---:|---:|---:|:--|')
+  for (const [size, arr] of Array.from(bySize2.entries()).sort((a,b)=>a[0]-b[0])) {
+    const tsOnly = arr.filter(r => isTsScenario(r.scenario))
+    const oxJson = arr.find(r => r.scenario === 'OXJ')
+    if (!oxJson) continue
+    const bestTsOne = [...tsOnly].sort((a,b)=>a.oneShotMs-b.oneShotMs)[0]
+    const oneComparison = describeComparison(oxJson.oneShotMs, bestTsOne.oneShotMs)
+    lines.push(`| ${size} | ${fmt(bestTsOne.oneShotMs)} | ${fmt(oxJson.oneShotMs)} | ${oneComparison} |`)
+  }
+  lines.push('')
+  if (stockAstJsonComparisons.length > 0) {
+    lines.push('Experimental stock-subset AST JSON output:')
+    lines.push('')
+    lines.push('This is not the default markdown-it-compatible `Token[]` API. It emits the same mdast JSON string as @ox-content/napi for the stock subset covered by the internal fast path, to measure how far a compact/string boundary can go without JS Token materialization.')
+    lines.push('')
+    lines.push('| Size (chars) | markdown-it-ts stock AST JSON | @ox-content/napi parse | TS vs ox | @ox-content/napi parse + JSON.parse |')
+    lines.push('|---:|---:|---:|:--|---:|')
+    for (const row of stockAstJsonComparisons) {
+      lines.push(`| ${row.size} | ${fmt(row.tsAstJsonMs)} | ${fmt(row.oxParseMs)} | ${describeComparison(row.oxParseMs, row.tsAstJsonMs)} | ${fmt(row.oxParseJsonMs)} |`)
+    }
+    lines.push('')
+  }
   // Optional diagnostic: chunk info if present
   const hasChunkInfo = results.some(r => r.chunkInfoOne || r.chunkInfoAppendLast)
   if (hasChunkInfo) {
@@ -789,9 +898,10 @@ function groupBy(arr, key) {
 
 const results = runMatrix()
 const coldHot = measureColdHot()
-const renderComparisons = measureRenderComparisons()
+const renderComparisons = await measureRenderComparisons()
+const stockAstJsonComparisons = measureStockAstJsonComparisons()
 const environment = getPerfEnvironment()
-const md = toMarkdown(results, coldHot, environment)
+const md = toMarkdown(results, coldHot, environment, stockAstJsonComparisons)
 writeFileSync(new URL('../docs/perf-latest.md', import.meta.url), md)
 
 // Also write a machine-readable JSON for regression checks
@@ -808,6 +918,7 @@ const payload = {
   results,
   coldHot,
   renderComparisons,
+  stockAstJsonComparisons,
 }
 writeFileSync(new URL('../docs/perf-latest.json', import.meta.url), JSON.stringify(payload, null, 2))
 

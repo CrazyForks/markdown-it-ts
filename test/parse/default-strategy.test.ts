@@ -26,22 +26,43 @@ function buildDoc(targetChars: number) {
   return s
 }
 
+function unsupportedPara(n: number) {
+  return `## Section ${n}
+
+Lorem ipsum dolor sit amet,
+consectetur adipiscing elit.
+
+\`\`\`js
+console.log(${n})
+\`\`\`
+
+`
+}
+
+function buildUnsupportedDoc(targetChars: number) {
+  let s = ''
+  let i = 0
+  while (s.length < targetChars)
+    s += unsupportedPara(i++)
+  return s
+}
+
 describe('default strategy selection', () => {
-  it('keeps medium one-shot inputs on the plain path', () => {
+  it('uses stock-fast for supported medium one-shot inputs', () => {
     const md = MarkdownIt()
     const doc = buildDoc(60_000)
     const env: Record<string, unknown> = {}
 
     md.parse(doc, env)
 
-    expect(getParseDiagnostics(env)?.strategy?.path).toBe('plain')
+    expect(getParseDiagnostics(env)?.strategy?.path).toBe('stock-fast')
     expect(getParseDiagnostics(env)?.chunk).toBeUndefined()
   })
 
-  it('uses full-chunk automatically for long one-shot inputs', () => {
+  it('uses full-chunk automatically for unsupported long one-shot inputs', () => {
     const md = MarkdownIt()
     const baseline = MarkdownIt({ fullChunkedFallback: false, autoUnbounded: false })
-    const doc = buildDoc(600_000)
+    const doc = buildUnsupportedDoc(600_000)
     const env: Record<string, unknown> = {}
 
     const html = md.render(doc, env)
@@ -56,11 +77,11 @@ describe('default strategy selection', () => {
     const md = MarkdownIt()
     const env: Record<string, unknown> = {}
 
-    md.parse(buildDoc(600_000), env)
+    md.parse(buildUnsupportedDoc(600_000), env)
     expect(getParseDiagnostics(env)?.chunk).toBeDefined()
 
     md.parse('small', env)
-    expect(getParseDiagnostics(env)?.strategy?.path).toBe('plain')
+    expect(getParseDiagnostics(env)?.strategy?.path).toBe('stock-fast')
     expect(getParseDiagnostics(env)?.chunk).toBeUndefined()
     expect(getParseDiagnostics(env)?.unbounded).toBeUndefined()
   })

@@ -530,28 +530,130 @@ markdown-it-ts is optimized for fast parser throughput while preserving the mark
 In the latest local benchmark snapshot from this repository’s synthetic harness, one-shot parsing is roughly at parity with or faster than upstream markdown-it on the measured large-document sizes:
 
 <!-- perf-auto:one-examples:start -->
-- 5,000 chars: 0.1518ms vs 0.1858ms → ~1.2× faster, ~18% less time
-- 20,000 chars: 0.5978ms vs 0.7267ms → ~1.2× faster, ~18% less time
-- 100,000 chars: 3.3294ms vs 3.8147ms → ~1.1× faster, ~13% less time
-- 500,000 chars: 22.33ms vs 23.57ms → ~1.1× faster, ~5% less time
-- 1,000,000 chars: 50.21ms vs 51.59ms → ~1× faster, ~3% less time
+- 5,000 chars: 0.0425ms vs 0.2052ms → ~4.8× faster, ~79% less time
+- 20,000 chars: 0.1586ms vs 0.8322ms → ~5.2× faster, ~81% less time
+- 100,000 chars: 1.4812ms vs 5.3313ms → ~3.6× faster, ~72% less time
+- 500,000 chars: 11.65ms vs 33.24ms → ~2.9× faster, ~65% less time
+- 1,000,000 chars: 25.81ms vs 63.77ms → ~2.5× faster, ~60% less time
 <!-- perf-auto:one-examples:end -->
 
 Native parser baseline (`markdown-it-ts` best one-shot vs `@ox-content/napi` parse only):
 
+Note: the `@ox-content/napi` parse-only API returns an AST JSON string; these parse-only rows do not include a follow-up `JSON.parse` into JavaScript objects.
+
 <!-- perf-auto:ox-one:start -->
-- 5,000 chars: 0.1518ms vs 0.0385ms → ~3.9× slower, ~295% more time
-- 20,000 chars: 0.5978ms vs 0.1473ms → ~4.1× slower, ~306% more time
-- 100,000 chars: 3.3294ms vs 0.8657ms → ~3.8× slower, ~285% more time
+- 5,000 chars: 0.0425ms vs 0.0350ms → ~1.2× slower, ~22% more time
+- 20,000 chars: 0.1586ms vs 0.1338ms → ~1.2× slower, ~19% more time
+- 100,000 chars: 1.4812ms vs 0.7522ms → ~2× slower, ~97% more time
 <!-- perf-auto:ox-one:end -->
+
+If the `@ox-content/napi` AST JSON string is immediately materialized into JavaScript objects:
+
+<!-- perf-auto:ox-json-one:start -->
+- 5,000 chars: 0.0425ms vs 0.1717ms → ~4× faster, ~75% less time
+- 20,000 chars: 0.1586ms vs 0.6691ms → ~4.2× faster, ~76% less time
+- 100,000 chars: 1.4812ms vs 3.5254ms → ~2.4× faster, ~58% less time
+<!-- perf-auto:ox-json-one:end -->
+
+Experimental stock-subset AST JSON output (`parseStockFastAstJson`) compared with `@ox-content/napi` parse-only:
+
+<!-- perf-auto:stock-ast-json:start -->
+- 5,000 chars: 0.0279ms vs 0.0367ms → ~1.3× faster, ~24% less time
+- 20,000 chars: 0.0844ms vs 0.1710ms → ~2× faster, ~51% less time
+- 100,000 chars: 0.4529ms vs 0.9118ms → ~2× faster, ~50% less time
+<!-- perf-auto:stock-ast-json:end -->
+
+What the native baseline teaches us:
+
+- `@ox-content/napi` is fastest in parse-only mode because it returns a compact AST JSON string instead of materializing a large JavaScript `Token[]` graph.
+- Once that JSON string is parsed into JavaScript objects, markdown-it-ts is faster on this benchmark.
+- The experimental `parseStockFastAstJson` path validates the same optimization direction inside this project: avoid JS Token allocation when the caller can consume a compact AST/string boundary.
+- The default `md.parse()` API still returns markdown-it-compatible mutable tokens, so its remaining gap is mostly Token object, child array, source-map array, and GC cost rather than line scanning.
 
 End-to-end render baseline (`markdown-it-ts.render` vs `@ox-content/napi` parse + render):
 
 <!-- perf-auto:render-ox:start -->
-- 5,000 chars: 0.1788ms vs 0.0363ms → ~4.9× slower, ~393% more time
-- 20,000 chars: 0.6922ms vs 0.1993ms → ~3.5× slower, ~247% more time
-- 100,000 chars: 3.9285ms vs 0.8645ms → ~4.5× slower, ~354% more time
+- 5,000 chars: 0.0275ms vs 0.0318ms → ~1.2× faster, ~14% less time
+- 20,000 chars: 0.0936ms vs 0.1778ms → ~1.9× faster, ~47% less time
+- 100,000 chars: 0.5141ms vs 0.8094ms → ~1.6× faster, ~36% less time
 <!-- perf-auto:render-ox:end -->
+
+Compact native baseline table:
+
+<!-- perf-auto:ox-summary:start -->
+| Size | markdown-it-ts parse | @ox-content/napi parse | Parse comparison | markdown-it-ts render | @ox-content/napi render | Render comparison |
+|---:|---:|---:|:--|---:|---:|:--|
+| 5,000 | 0.0425ms | 0.0350ms | ~1.2× slower, ~22% more time | 0.0275ms | 0.0318ms | ~1.2× faster, ~14% less time |
+| 20,000 | 0.1586ms | 0.1338ms | ~1.2× slower, ~19% more time | 0.0936ms | 0.1778ms | ~1.9× faster, ~47% less time |
+| 100,000 | 1.4812ms | 0.7522ms | ~2× slower, ~97% more time | 0.5141ms | 0.8094ms | ~1.6× faster, ~36% less time |
+<!-- perf-auto:ox-summary:end -->
+
+### Parse / render ranking (5k-200k)
+
+<!-- perf-auto:ranking-en:start -->
+This compact ranking includes the native `@ox-content/napi` baseline alongside markdown-it-ts and JS implementations. It is generated from the latest `docs/perf-latest.json` snapshot.
+Parse ranking uses the fastest markdown-it-ts one-shot scenario for each size; render ranking uses the default `MarkdownIt().render()` end-to-end API.
+
+**Parse ranking (one-shot parse, ms)**
+
+| Size | Rank | Library | oneShotMs |
+|---:|---:|---|---:|
+| 5,000 | 1 | @ox-content/napi | 0.0350ms |
+| 5,000 | 2 | markdown-it-ts | 0.0425ms |
+| 5,000 | 3 | markdown-it | 0.2052ms |
+| 5,000 | 4 | markdown-exit | 0.2656ms |
+| 5,000 | 5 | remark | 5.6238ms |
+| 20,000 | 1 | @ox-content/napi | 0.1338ms |
+| 20,000 | 2 | markdown-it-ts | 0.1586ms |
+| 20,000 | 3 | markdown-it | 0.8322ms |
+| 20,000 | 4 | markdown-exit | 1.0668ms |
+| 20,000 | 5 | remark | 25.87ms |
+| 50,000 | 1 | @ox-content/napi | 0.3757ms |
+| 50,000 | 2 | markdown-it-ts | 0.4542ms |
+| 50,000 | 3 | markdown-it | 2.1523ms |
+| 50,000 | 4 | markdown-exit | 2.8315ms |
+| 50,000 | 5 | remark | 75.49ms |
+| 100,000 | 1 | @ox-content/napi | 0.7522ms |
+| 100,000 | 2 | markdown-it-ts | 1.4812ms |
+| 100,000 | 3 | markdown-it | 5.3313ms |
+| 100,000 | 4 | markdown-exit | 6.5396ms |
+| 100,000 | 5 | remark | 165.87ms |
+| 200,000 | 1 | @ox-content/napi | 1.7581ms |
+| 200,000 | 2 | markdown-it-ts | 3.7401ms |
+| 200,000 | 3 | markdown-it | 12.02ms |
+| 200,000 | 4 | markdown-exit | 14.28ms |
+| 200,000 | 5 | remark | 458.46ms |
+
+**Render ranking (parse + HTML output, ms)**
+
+| Size | Rank | Library | renderMs |
+|---:|---:|---|---:|
+| 5,000 | 1 | markdown-it-ts | 0.0275ms |
+| 5,000 | 2 | @ox-content/napi | 0.0318ms |
+| 5,000 | 3 | markdown-it | 0.2659ms |
+| 5,000 | 4 | markdown-exit | 0.3139ms |
+| 5,000 | 5 | remark + rehype | 6.3510ms |
+| 20,000 | 1 | markdown-it-ts | 0.0936ms |
+| 20,000 | 2 | @ox-content/napi | 0.1778ms |
+| 20,000 | 3 | markdown-it | 1.0115ms |
+| 20,000 | 4 | markdown-exit | 1.2538ms |
+| 20,000 | 5 | remark + rehype | 28.95ms |
+| 50,000 | 1 | markdown-it-ts | 0.2493ms |
+| 50,000 | 2 | @ox-content/napi | 0.3882ms |
+| 50,000 | 3 | markdown-it | 2.5732ms |
+| 50,000 | 4 | markdown-exit | 3.2280ms |
+| 50,000 | 5 | remark + rehype | 86.39ms |
+| 100,000 | 1 | markdown-it-ts | 0.5141ms |
+| 100,000 | 2 | @ox-content/napi | 0.8094ms |
+| 100,000 | 3 | markdown-it | 6.5609ms |
+| 100,000 | 4 | markdown-exit | 8.0743ms |
+| 100,000 | 5 | remark + rehype | 199.22ms |
+| 200,000 | 1 | markdown-it-ts | 0.9076ms |
+| 200,000 | 2 | @ox-content/napi | 1.7079ms |
+| 200,000 | 3 | markdown-it | 15.38ms |
+| 200,000 | 4 | markdown-exit | 18.83ms |
+| 200,000 | 5 | remark + rehype | 502.82ms |
+<!-- perf-auto:ranking-en:end -->
 
 For append-heavy editor or streaming workloads, enable the stream parser or use `StreamBuffer` / `UnboundedBuffer`. These paths are designed to avoid reparsing stable historical text when the input shape is safe for incremental parsing.
 

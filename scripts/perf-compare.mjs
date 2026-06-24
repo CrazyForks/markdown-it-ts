@@ -11,6 +11,22 @@ function pct(a, b) { return (a - b) / b }
 
 function fmtPct(x) { return (x * 100).toFixed(1) + '%' }
 
+function fmtMs(x) {
+  if (!Number.isFinite(x))
+    return '-'
+  if (x >= 10)
+    return x.toFixed(2) + 'ms'
+  return x.toFixed(4) + 'ms'
+}
+
+function fmtRatio(current, baseline) {
+  if (!Number.isFinite(current) || !Number.isFinite(baseline) || current <= 0 || baseline <= 0)
+    return '-'
+  if (current <= baseline)
+    return (baseline / current).toFixed(2) + 'x faster'
+  return (current / baseline).toFixed(2) + 'x slower'
+}
+
 function isInternalScenario(id) {
   return /^S[1-5]$/.test(id)
 }
@@ -154,6 +170,33 @@ function main() {
     for (const r of renderRows) {
       const render = r.checkRender ? (r.renderDelta >= 0 ? '+' : '') + fmtPct(r.renderDelta) : 'skip'
       console.log(`| ${r.size} | ${r.scenario} | ${render}${r.regRender ? ' (!) ' : ' '}|`)
+    }
+  }
+
+  const currentNativeRows = []
+  const sizes = [...new Set(cur.results.map(r => r.size))].sort((a, b) => a - b)
+  const curAstMap = new Map((cur.stockAstJsonComparisons || []).map(r => [r.size, r]))
+  for (const size of sizes) {
+    const parseRows = cur.results.filter(r => r.size === size)
+    const bestTs = parseRows
+      .filter(r => isInternalScenario(r.scenario) && Number.isFinite(r.oneShotMs))
+      .sort((a, b) => a.oneShotMs - b.oneShotMs)[0]
+    const oxParse = parseRows.find(r => r.scenario === 'OX1')
+    const ast = curAstMap.get(size)
+    const tsRender = curRenderMap.get(`${size}-TS_RENDER`)
+    const oxRender = curRenderMap.get(`${size}-OX_RENDER`)
+    if (!bestTs && !ast && !tsRender)
+      continue
+
+    currentNativeRows.push({ size, bestTs, oxParse, ast, tsRender, oxRender })
+  }
+
+  if (currentNativeRows.length) {
+    console.log('Current native baseline summary')
+    console.log('| Size | TS best parse | ox parse | Parse vs ox | TS AST JSON | AST JSON vs ox | TS render | ox render | Render vs ox |')
+    console.log('|---:|---:|---:|:--|---:|:--|---:|---:|:--|')
+    for (const r of currentNativeRows) {
+      console.log(`| ${r.size} | ${fmtMs(r.bestTs?.oneShotMs)} | ${fmtMs(r.oxParse?.oneShotMs)} | ${fmtRatio(r.bestTs?.oneShotMs, r.oxParse?.oneShotMs)} | ${fmtMs(r.ast?.tsAstJsonMs)} | ${fmtRatio(r.ast?.tsAstJsonMs, r.ast?.oxParseMs)} | ${fmtMs(r.tsRender?.renderMs)} | ${fmtMs(r.oxRender?.renderMs)} | ${fmtRatio(r.tsRender?.renderMs, r.oxRender?.renderMs)} |`)
     }
   }
 

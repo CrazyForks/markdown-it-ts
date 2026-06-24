@@ -124,9 +124,10 @@ for (const size of SIZES) {
     // For stream-no-cache, cache is irrelevant on first parse
   const one = measure(() => (
     sc.type.startsWith('stream') ? md.stream.parse(doc, envStream)
-    : sc.type === 'md-original' ? md.parse(doc, {})
+    : sc.type === 'md-original' ? md.parse(doc)
     : sc.type === 'ox-content' ? oxParse(doc)
     : sc.type === 'remark' ? md.parse(doc)
+    : sc.type === 'full-plain' ? md.parse(doc)
     : md.parse(doc, {})
   ))
 
@@ -150,10 +151,12 @@ for (const size of SIZES) {
       if (sc.type.startsWith('stream')) {
         md.stream.parse(acc, envStream)
       } else if (sc.type === 'md-original') {
-        md.parse(acc, {})
+        md.parse(acc)
       } else if (sc.type === 'ox-content') {
         md.parser.append(appendedPiece, { isFinal: i === appParts.length - 1 })
       } else if (sc.type === 'remark') {
+        md.parse(acc)
+      } else if (sc.type === 'full-plain') {
         md.parse(acc)
       } else {
         md.parse(acc, {})

@@ -1,3 +1,4 @@
+export { parseStockFastAstJson } from './parse/stock_fast'
 export {
   clearParseDiagnostics,
   getParseDiagnostics,
@@ -10,6 +11,8 @@ export type {
   StrategyDiagnostics,
   UnboundedDiagnostics,
 } from './parse/strategy_diagnostics'
+
+export { renderStockFast } from './render/stock_fast'
 
 export { StreamBuffer } from './stream/buffer'
 export { chunkedParse, splitIntoChunkRanges, splitIntoChunks } from './stream/chunked'
